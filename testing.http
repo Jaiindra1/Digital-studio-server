@@ -1,0 +1,90 @@
+###
+curl -X POST http://localhost:4000/api/auth/login \
+-H "Content-Type: application/json" \
+-d '{
+  "email": "admin@example.com",
+  "password": "StrongPassword123"
+}'
+###
+curl -X GET http://localhost:4000/health
+###
+curl -X GET http://localhost:4000/api/admin/me
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzA3Mzc0NCwiZXhwIjoxNzY3MDc3MzQ0fQ.jILOgfCzQjxOSeZvO5ocS3pOwslkB-anVSEipBEtNgY"
+###
+curl -X POST http://localhost:4000/api/staff
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzA3NTE3MCwiZXhwIjoxNzY3MDc4NzcwfQ.1tYEL0yLqBtvB-VMSlvpwB5rex_zhd7ycX6VO-O_044"
+-H "Content-Type: application/json"
+-d
+'{
+  "name": "Ravi Kumar",
+  "email": "ravi@studio.com",
+  "role": "Photographer",
+  "skills": "Wedding,Outdoor"
+}'
+###
+curl -X GET http://localhost:4000/api/staff
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2Nzc1NDQ3OCwiZXhwIjoxNzY3NzU4MDc4fQ.JifgyQoZIIsufuph0YgqWV4IfvQ3zHR3TlTbSytTvNM"
+###
+curl -X PUT http://localhost:4000/api/staff/2
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5MTIxNiwiZXhwIjoxNzY3NTk0ODE2fQ.Es6FDHBG6Nx6nQdR_NT97tCszU6bUniAtxbgmo0fN2Q"
+-H Content-Type: application/json
+-d '{
+  "name": "Ravi K",
+  "email": "ravi@studio.com",
+  "role": "Senior Photographer",
+  "skills": "Wedding,Drone"
+}'
+###
+PUT http://localhost:4000/api/staff/2
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5OTA2NywiZXhwIjoxNzY3NjAyNjY3fQ.Wa2s4qHbptVljq2poLXj0q1BnC-G4Fi1BKAp49vH4lc
+Content-Type: application/json
+
+{
+    "name": "Alex Morgan",
+    "email": "alex.m@studio.com",
+    "role": "videographer",
+    "skills": "Portrait,Lighting,Camera Man",
+    "status": "INACTIVE",
+    "inactive_reason": "not intrested"
+}
+###
+GET http://localhost:4000/api/clients
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5OTA2NywiZXhwIjoxNzY3NjAyNjY3fQ.Wa2s4qHbptVljq2poLXj0q1BnC-G4Fi1BKAp49vH4lc
+Content-Type: application/json
+
+{
+  "name": "Suresh Kumar",
+  "phone": "9876543210",
+  "email": "suresh@gmail.com",
+  "address": "Hyderabad",
+  "notes": "Wedding client"
+}
+
+###
+POST http://localhost:4000/api/events/5/assign-staff
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5OTA2NywiZXhwIjoxNzY3NjAyNjY3fQ.Wa2s4qHbptVljq2poLXj0q1BnC-G4Fi1BKAp49vH4lc
+Content-Type: application/json
+
+{
+  "staffIds": [1, 2],
+  "roles": {
+    "1": "Lead Photographer",
+    "2": "Videographer"
+  }
+}
+###
+GET http://localhost:4000/api/events
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzY4NTI0MywiZXhwIjoxNzY3Njg4ODQzfQ.XNyLLcs5B0K5819QWB5_rndEMH6Ou-Oat5nx654AgA8
+Content-Type: application/json
+
+{
+  "staffIds": [1, 2],
+  "roles": {
+    "1": "Lead Photographer",
+    "2": "Videographer"
+  }
+}
+
+###
+GET http://localhost:4000/api/public/media
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzY5Nzc2MywiZXhwIjoxNzY3NzAxMzYzfQ.vCF0PpH9wJVl0xTpsqbjFq-1N4cCoGTr2nTUX3Y-3lw
