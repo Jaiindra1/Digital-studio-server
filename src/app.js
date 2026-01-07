@@ -5,7 +5,7 @@ const express = require('express');
 const app = express();
 
 app.use(cors({
-  origin: ['http://localhost:3000','http://localhost:3001'],
+  origin: ['http://localhost:3000','http://localhost:3001','https://digital-studio-chi.vercel.app'],
   credentials: true
 }));
 app.use(express.json());
