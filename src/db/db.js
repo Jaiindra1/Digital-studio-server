@@ -2,7 +2,8 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
-const dbPath = process.env.SQLITE_DB;
+const dbPath =
+  process.env.SQLITE_DB || path.join(__dirname, 'data', 'studio.db');
 
 // ensure data folder exists
 const dir = path.dirname(dbPath);
@@ -16,6 +17,13 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('Failed to connect SQLite:', err.message);
     process.exit(1);
   }
+  console.log('SQLite connected at', dbPath);
+});
+
+// important pragmas
+db.serialize(() => {
+  db.run('PRAGMA foreign_keys = ON');
+  db.run('PRAGMA journal_mode = WAL');
 });
 
 // load schema
@@ -27,6 +35,7 @@ db.exec(schema, (err) => {
     console.error('Failed to initialize DB schema:', err.message);
     process.exit(1);
   }
+  console.log('Database schema loaded');
 });
 
 module.exports = db;

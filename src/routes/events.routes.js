@@ -9,5 +9,8 @@ router.use(authenticate);
 // Assign staff to event
 router.get('/', controller.getAllEvents);
 router.post('/:eventId/assign-staff', controller.assignStaff);
+router.post('/',  controller.createEvent);
+router.put('/:eventId', controller.updateEvent);
+router.patch('/:eventId/amount', controller.updateAmount);
 
 module.exports = router;

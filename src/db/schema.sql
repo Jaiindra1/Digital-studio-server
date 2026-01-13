@@ -46,13 +46,3 @@ CREATE TABLE IF NOT EXISTS events (
   FOREIGN KEY (client_id) REFERENCES clients(id)
 );
 
-CREATE TABLE IF NOT EXISTS media (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  title TEXT,
-  type TEXT CHECK(type IN ('PHOTO','VIDEO')),
-  category TEXT,
-  s3_url TEXT NOT NULL,
-  is_public INTEGER DEFAULT 1,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
--- Duplicate `media` table removed. Use the `media` table above with `IF NOT EXISTS`.

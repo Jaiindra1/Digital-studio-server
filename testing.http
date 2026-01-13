@@ -61,8 +61,8 @@ Content-Type: application/json
 }
 
 ###
-POST http://localhost:4000/api/events/5/assign-staff
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5OTA2NywiZXhwIjoxNzY3NjAyNjY3fQ.Wa2s4qHbptVljq2poLXj0q1BnC-G4Fi1BKAp49vH4lc
+POST http://localhost:4000/api/events/7/assign-staff
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzkyOTExNCwiZXhwIjoxNzY3OTMyNzE0fQ.tmUnMjzZOuA1ea1gF-YECLcgNmVZdMgFZjo2CRdm6JE
 Content-Type: application/json
 
 {
@@ -74,7 +74,7 @@ Content-Type: application/json
 }
 ###
 GET http://localhost:4000/api/events
-Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzY4NTI0MywiZXhwIjoxNzY3Njg4ODQzfQ.XNyLLcs5B0K5819QWB5_rndEMH6Ou-Oat5nx654AgA8
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzkyOTExNCwiZXhwIjoxNzY3OTMyNzE0fQ.tmUnMjzZOuA1ea1gF-YECLcgNmVZdMgFZjo2CRdm6JE
 Content-Type: application/json
 
 {
@@ -88,3 +88,57 @@ Content-Type: application/json
 ###
 GET http://localhost:4000/api/public/media
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzY5Nzc2MywiZXhwIjoxNzY3NzAxMzYzfQ.vCF0PpH9wJVl0xTpsqbjFq-1N4cCoGTr2nTUX3Y-3lw
+###
+POST http://localhost:4000/api/events
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2Nzg0ODczNiwiZXhwIjoxNzY3ODUyMzM2fQ.J53pb3S_65zdglegSLIvreiasvJMR_d7gYcBUyMWP0M
+Content-Type: application/json
+
+{
+  "client_name": "Ramesh Kumar",
+  "client_phone": "9876543210",
+  "client_email": "ramesh@gmail.com",
+  "event_type": "Wedding",
+  "event_date": "2026-02-10",
+  "start_time": "10:00",
+  "end_time": "18:00",
+  "location": "Hyderabad"
+}
+
+###
+GET  http://localhost:4000/api/clients
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2Nzg0ODczNiwiZXhwIjoxNzY3ODUyMzM2fQ.J53pb3S_65zdglegSLIvreiasvJMR_d7gYcBUyMWP0M
+###
+GET  http://localhost:4000/api/events
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzkzMzE2NCwiZXhwIjoxNzY3OTM2NzY0fQ.TRSF2xJcCU7-VHxpJw_dBQMEqkrvNj2tJEdP4oW0bEw
+###
+POST /api/admin/galleries
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODAyMTk0NCwiZXhwIjoxNzY4MDI1NTQ0fQ.HB0V7-g2kD2jKH7ApYHFzD0Kdec0vkeCdJrm3zLmCvA
+Content-Type: application/json
+{
+  "subcategory_id": 3,
+  "title": "Outdoor Wedding – Jaipur",
+  "slug": "outdoor-wedding-jaipur"
+}
+###
+GET http://localhost:4000/api/gallery/media
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODA5OTI3MSwiZXhwIjoxNzY4MTAyODcxfQ.1V_6VozgYqYgmjDnC-ZrFWY9M2UOweu8iJ2hh0J8t8Q
+###
+GET http://localhost:4000/api/cat/categories
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODE5ODMzOSwiZXhwIjoxNzY4MjAxOTM5fQ.5vSxxwOrjvmCeszmnM_Nz511aQNfr0iFqxvKs2xN6cw
+###
+GET http://localhost:4000/api/cat/labels/WEDDINGS
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODE5ODMzOSwiZXhwIjoxNzY4MjAxOTM5fQ.5vSxxwOrjvmCeszmnM_Nz511aQNfr0iFqxvKs2xN6cw
+###
+POST http://localhost:4000/api/albums
+Authorization: Bearerey eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODIxMTE5OCwiZXhwIjoxNzY4MjE0Nzk4fQ.VpdZ5xyanfaVHm6aSAVh5HeokrM3yqh2Ad6RT1_QR18
+###
+GET http://localhost:4000/api/albums/media/album/24
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODIxMTE5OCwiZXhwIjoxNzY4MjE0Nzk4fQ.VpdZ5xyanfaVHm6aSAVh5HeokrM3yqh2Ad6RT1_QR18
+###
+GET http://localhost:4000/api/albums/gallery/5
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODIxMTE5OCwiZXhwIjoxNzY4MjE0Nzk4fQ.VpdZ5xyanfaVHm6aSAVh5HeokrM3yqh2Ad6RT1_QR18
+###
+GET http://localhost:4000/api/albums/recent
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODIxODIzMSwiZXhwIjoxNzY4MjIxODMxfQ.Y4yOFfhRce72aB-tZtkhQCXj3A2ijEiQFsVLWMLFCwE
+###
+http://localhost:4000/api/albums/24 

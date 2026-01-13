@@ -25,3 +25,14 @@ exports.uploadMedia = (req, res) => {
     });
   });
 };
+
+exports.getMediaByAlbum = (req, res) => {
+  const { albumId } = req.params;
+
+  const sql = `SELECT * FROM gallery_media WHERE album_id = ?`;
+
+  db.all(sql, [albumId], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+};
