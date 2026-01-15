@@ -2,7 +2,7 @@ require("dotenv").config();
 const fs = require("fs");
 const db = require("../db/db");
 const s3Client = require("../config/s3");
-const { PutObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const BUCKET = process.env.S3_BUCKET_NAME;
@@ -185,20 +185,20 @@ exports.getAlbumsByGallery = async (req, res) => {
       db.all(
         `
         SELECT
-          a.id,
-          a.name,
+          a.id As ALbum_id,
+          a.name As event_name,
           a.created_at,
           COUNT(m.id) AS media_count,
           (
             SELECT s3_url
             FROM gallery_media
-            WHERE album_id = a.id
+            WHERE s3_url= a.cover_key 
             ORDER BY created_at ASC
             LIMIT 1
           ) AS cover_key
         FROM albums a
         LEFT JOIN gallery_media m ON m.album_id = a.id
-        WHERE a.label_id = ?
+        WHERE a.id = ?
         GROUP BY a.id
         ORDER BY a.created_at DESC
       `,
@@ -249,7 +249,7 @@ exports.getRecentAlbums = async (req, res) => {
           (
             SELECT s3_url
             FROM gallery_media
-            WHERE album_id = a.id
+            WHERE s3_url= a.cover_key 
             ORDER BY created_at ASC
             LIMIT 1
           ) AS cover_image
@@ -295,6 +295,97 @@ exports.getRecentAlbums = async (req, res) => {
     res.json(signedAlbums);
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+/* update Album */
+
+
+exports.updateAlbumFull = async (req, res) => {
+  try {
+    const { 
+      album_id, 
+      album_name, 
+      gallery_id, 
+      cover_key, // We now expect the actual S3 string
+      deleted_media_ids 
+    } = req.body;
+    
+    const newFiles = req.files || [];
+    const BUCKET = process.env.S3_BUCKET_NAME;
+
+    // 1. Update Album basic info
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE albums SET name = ?, label_id = ? WHERE id = ?`,
+        [album_name, gallery_id, album_id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    // 2. Handle Deletions
+    if (deleted_media_ids) {
+      const idsToDelete = JSON.parse(deleted_media_ids);
+      for (const id of idsToDelete) {
+        const row = await new Promise((res) => 
+          db.get(`SELECT s3_url FROM gallery_media WHERE id = ?`, [id], (err, r) => res(r))
+        );
+        
+        if (row?.s3_url) {
+          try {
+            await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: row.s3_url }));
+          } catch (e) { console.error("S3 Delete Warning:", e.message); }
+          
+          await new Promise((res) => db.run(`DELETE FROM gallery_media WHERE id = ?`, [id], res));
+        }
+      }
+    }
+
+    // 3. Upload New Files
+    let lastUploadedKey = null;
+    for (const file of newFiles) {
+      const key = `gallery/${gallery_id}/albums/${album_id}/${Date.now()}-${file.originalname.replace(/\s+/g, "_")}`;
+      
+      await s3Client.send(new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: file.buffer,
+        ContentType: file.mimetype
+      }));
+
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO gallery_media (gallery_id, album_id, title, s3_url) VALUES (?, ?, ?, ?)`,
+          [gallery_id, album_id, file.originalname, key],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+      lastUploadedKey = key; 
+    }
+
+    // 4. Sync Cover Key
+    // If user selected an existing image as cover, use cover_key.
+    // If they uploaded NEW images and didn't pick an old one, use the last uploaded.
+    // Otherwise, fallback to the first available image in the DB.
+    let finalCoverKey = cover_key;
+
+    if (!finalCoverKey || finalCoverKey === "undefined") {
+      const fallback = await new Promise((resolve) => {
+        db.get(`SELECT s3_url FROM gallery_media WHERE album_id = ? ORDER BY id DESC LIMIT 1`, [album_id], (err, row) => resolve(row));
+      });
+      finalCoverKey = fallback?.s3_url;
+    }
+
+    if (finalCoverKey) {
+      await new Promise((res) => 
+        db.run(`UPDATE albums SET cover_key = ? WHERE id = ?`, [finalCoverKey, album_id], res)
+      );
+    }
+
+    res.json({ message: "Album updated successfully", cover_updated_to: finalCoverKey });
+  } catch (err) {
+    console.error("Update Error:", err);
     res.status(500).json({ error: err.message });
   }
 };

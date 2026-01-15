@@ -10,17 +10,20 @@ router.post("/", auth, controller.createAlbum);
 router.get("/gallery/:galleryId", controller.getAlbumsByGallery);
 
 // UPLOAD MEDIA TO ALBUM
-router.post(
-  "/upload",
+router.post("/upload",
   auth,
   upload.array("images", 50),
   controller.uploadMediaToAlbum
 );
 
+// Route for full update
+router.put('/update-full', upload.array('images', 50), controller.updateAlbumFull);
+
 // GET MEDIA
 router.get("/media", controller.getAllMedia);
 router.get("/media/album/:albumId", controller.getMediaByAlbum);
 router.get("/recent", auth, controller.getRecentAlbums);
+
 
 
 module.exports = router;
