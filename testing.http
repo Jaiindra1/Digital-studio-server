@@ -144,3 +144,21 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiO
 PUT http://localhost:4000/api/albums/update-full 
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODQ1ODcwNiwiZXhwIjoxNzY4NDYyMzA2fQ.6aeYtsJT35p3CQ74WcBc6NCXjVCNbIfDaw8xnxnm5QE
 ###
+POST http://localhost:4000/api/studio/update 
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODQ4OTI5MSwiZXhwIjoxNzY4NDkyODkxfQ.m0s5IDi8YVXZJbLkAlfJUj9u42-xB-A_nHuP8gx1w6Q
+Content-Type: application/json
+{
+  "studioName": "Elite Studio",
+  "description": "High-end audio recording studio",
+  "address": "Delhi",
+  "phone": "9999999999",
+  "email": "elite@studio.com",
+  "website": "https://elitestudio.com",
+  "instagram": "elitestudio",
+  "existingImageUrl": "https://existing-image-url.com/logo.png"
+}
+###
+GET http://localhost:4000/api/studio/studio-details
+Authorization:  Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODUzMDAxNiwiZXhwIjoxNzY4NTMzNjE2fQ.kjdKyvAaOyCl-sA90WioQVsSSqeGCbDUoixqhGl90g0
+###
+

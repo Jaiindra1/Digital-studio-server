@@ -38,4 +38,24 @@ db.exec(schema, (err) => {
   console.log('Database schema loaded');
 });
 
+// Add this wrapper to support async/await and the .query() syntax
+db.query = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    // Check if it's a SELECT or an UPDATE/INSERT
+    const method = sql.trim().toUpperCase().startsWith('SELECT') ? 'all' : 'run';
+    
+    db[method](sql, params, function (err, rows) {
+      if (err) return reject(err);
+      
+      // Return an object that mimics the PostgreSQL/Node-postgres result format
+      // so your controller code (result.rows[0]) doesn't break
+      resolve({
+        rows: rows || [],
+        lastID: this.lastID,
+        changes: this.changes
+      });
+    });
+  });
+};
+
 module.exports = db;
