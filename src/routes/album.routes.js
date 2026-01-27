@@ -9,6 +9,9 @@ router.post("/", auth, controller.createAlbum);
 // GET ALBUMS BY GALLERY
 router.get("/gallery/:galleryId", controller.getAlbumsByGallery);
 
+// GET SINGLE ALBUM BY ID
+router.get("/album/:albumId", controller.getAlbumById);
+
 // UPLOAD MEDIA TO ALBUM
 router.post("/upload",
   auth,
@@ -23,7 +26,6 @@ router.put('/update-full', upload.array('images', 50), controller.updateAlbumFul
 router.get("/media", controller.getAllMedia);
 router.get("/media/album/:albumId", controller.getMediaByAlbum);
 router.get("/recent", auth, controller.getRecentAlbums);
-
-
+router.delete("/:albumId", auth, controller.deleteAlbum);
 
 module.exports = router;

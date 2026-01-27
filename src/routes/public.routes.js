@@ -1,22 +1,15 @@
-const express = require('express');
-const router = express.Router();
-const db = require('../db/db');
+const router = require("express").Router();
+const controller = require("../controllers/Public.controller");
+const controller2 = require("../controllers/gallery.controller");
 
-// controller inline (or import it)
-router.get('/media', (req, res) => {
-  const sql = `
-    SELECT id, title, type, category, s3_url
-    FROM media
-    WHERE is_public = 1
-    ORDER BY created_at DESC
-  `;
 
-  db.all(sql, [], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json(rows);
-  });
-});
+// GET ALBUMS BY GALLERY
+router.get("/gallery/:galleryId", controller.getAlbumsByGallery);
+
+router.get("/media/album/:albumId", controller.getMediaByAlbum);
+router.get("/recent",  controller.getRecentAlbums);
+router.get("/categories",  controller2.getCategories);
+router.get("/labels/:category",  controller2.getLabelsByCategory);
+router.get('/album/:category', require("../controllers/Public.controller").getAlbumsByCategory);
 
 module.exports = router;

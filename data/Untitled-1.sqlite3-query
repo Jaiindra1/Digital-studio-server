@@ -1,0 +1,14 @@
+-- database: ./studio.sqlite
+
+SELECT * FROM gallery_media;
+SELECT 
+      m.album_id AS Albumid, m.title AS Albumname, m.s3_url AS Albumurl, m.created_at
+    FROM gallery_media m
+    JOIN gallery g ON m.gallery_id = g.id
+    WHERE m.album_id IN (SELECT id from gallery where id = ?);
+    SELECT * FROM albums 
+        WHERE label_id IN (
+        SELECT id 
+        FROM gallery 
+        WHERE category = ?
+        )

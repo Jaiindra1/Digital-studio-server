@@ -22,6 +22,7 @@ app.use("/api/albums", albumRoutes);
 app.use("/api/media", mediaRoutes);
 app.use('/api/cat', require('./routes/gallery.routes'));
 app.use('/api/studio', require('./routes/studio.routes'));
+app.use('/api/public', require('./routes/public.routes'));
 
 
 module.exports = app;

@@ -2,7 +2,7 @@ require("dotenv").config();
 const fs = require("fs");
 const db = require("../db/db");
 const s3Client = require("../config/s3");
-const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require("@aws-sdk/client-s3");
+const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 const BUCKET = process.env.S3_BUCKET_NAME;
@@ -198,7 +198,7 @@ exports.getAlbumsByGallery = async (req, res) => {
           ) AS cover_key
         FROM albums a
         LEFT JOIN gallery_media m ON m.album_id = a.id
-        WHERE a.id = ?
+        WHERE a.label_id = ?
         GROUP BY a.id
         ORDER BY a.created_at DESC
       `,
@@ -229,6 +229,43 @@ exports.getAlbumsByGallery = async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to fetch albums" });
+  }
+};
+
+/* GET SINGLE ALBUM BY ID */
+exports.getAlbumById = async (req, res) => {
+  const { albumId } = req.params;
+
+  try {
+    const album = await new Promise((resolve, reject) => {
+      db.get(
+        `
+        SELECT
+          a.id,
+          a.name AS event_name,
+          a.label_id,
+          a.created_at,
+          a.cover_key,
+          COUNT(m.id) AS media_count
+        FROM albums a
+        LEFT JOIN gallery_media m ON m.album_id = a.id
+        WHERE a.id = ?
+        GROUP BY a.id
+        `,
+        [albumId],
+        (err, row) => (err ? reject(err) : resolve(row))
+      );
+    });
+
+    if (!album) {
+      return res.status(404).json({ message: "Album not found" });
+    }
+
+    // Return as array to maintain compatibility with frontend
+    res.json([album]);
+  } catch (err) {
+    console.error("Error fetching album:", err);
+    res.status(500).json({ message: "Failed to fetch album" });
   }
 };
 
@@ -300,7 +337,6 @@ exports.getRecentAlbums = async (req, res) => {
 };
 
 /* update Album */
-
 
 exports.updateAlbumFull = async (req, res) => {
   try {
@@ -387,5 +423,59 @@ exports.updateAlbumFull = async (req, res) => {
   } catch (err) {
     console.error("Update Error:", err);
     res.status(500).json({ error: err.message });
+  }
+};
+
+
+exports.deleteAlbum = async (req, res) => {
+  const { albumId } = req.params;
+
+  try {
+    // 1. Fetch all media keys for this album
+    const mediaFiles = await new Promise((resolve, reject) => {
+      db.all(`SELECT s3_url FROM gallery_media WHERE album_id = ?`, [albumId], (err, rows) => {
+        err ? reject(err) : resolve(rows);
+      });
+    });
+
+    // 2. Bulk Delete from S3
+    if (mediaFiles.length > 0) {
+      const keysToDelete = mediaFiles
+        .filter(file => file.s3_url) // Safety check for nulls
+        .map(file => ({ Key: file.s3_url }));
+
+      const deleteParams = {
+        Bucket: BUCKET,
+        Delete: {
+          Objects: keysToDelete,
+          Quiet: true // Set to false if you want a detailed report of each file deleted
+        }
+      };
+
+      await s3Client.send(new DeleteObjectsCommand(deleteParams));
+    }
+
+    // 3. Database Cleanup (Atomic operation)
+    await new Promise((resolve, reject) => {
+      db.serialize(() => {
+        // Delete media first to satisfy foreign key constraints
+        db.run(`DELETE FROM gallery_media WHERE album_id = ?`, [albumId]);
+        
+        // Finally delete the album record
+        db.run(`DELETE FROM albums WHERE id = ?`, [albumId], function (err) {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    });
+
+    res.json({ 
+      message: "Album and associated files purged successfully",
+      filesDeleted: mediaFiles.length 
+    });
+
+  } catch (err) {
+    console.error("[PURGE ERROR]", err);
+    res.status(500).json({ error: "Purge failed: " + err.message });
   }
 };

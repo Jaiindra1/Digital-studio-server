@@ -161,4 +161,22 @@ Content-Type: application/json
 GET http://localhost:4000/api/studio/studio-details
 Authorization:  Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODUzMDAxNiwiZXhwIjoxNzY4NTMzNjE2fQ.kjdKyvAaOyCl-sA90WioQVsSSqeGCbDUoixqhGl90g0
 ###
-
+GET http://localhost:4000/api/public/album/BABY PHOTOGRAPHY
+###
+GET http://localhost:4000/api/public/labels/BABY PHOTOGRAPHY
+###
+GET http://localhost:4000/api/public/album/29
+###
+GET http://localhost:4000/api/public/media/11
+###
+GET http://localhost:4000/api/public/media/album/29
+###
+GET http://localhost:4000/api/public/gallery/32
+###
+GET http://localhost:4000/api/public/labels
+###
+GET http://localhost:4000/api/public/gallery/1
+###
+GET http://localhost:4000/api/public/gallery/1
+###
+GET http://localhost:4000/api/public/gallery/1

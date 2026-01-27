@@ -1,5 +1,6 @@
 const db = require("../db/db");
 
+
 /**
  * GET DISTINCT CATEGORIES
  */
@@ -29,3 +30,4 @@ exports.getLabelsByCategory = (req, res) => {
     }
   );
 };
+
