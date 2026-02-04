@@ -42,5 +42,5 @@ io.on('connection', (socket) => {
 // Make io available in routes/controllers
 app.set('io', io);
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT ;
 server.listen(PORT, () => console.log(`Server running on ${PORT}`));
