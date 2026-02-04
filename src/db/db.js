@@ -63,6 +63,74 @@ db.exec(schema, (err) => {
     }
   });
 
+  // Add amount column as alias for total_amount if not exists
+  db.run(`ALTER TABLE events ADD COLUMN amount REAL DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add amount column:', err.message);
+    } else {
+      console.log('amount column ensured');
+      db.run(`UPDATE events SET amount = total_amount WHERE amount = 0 OR amount IS NULL`, (err) => {
+        if (err) {
+          console.error('Failed to sync amount:', err.message);
+        }
+      });
+    }
+  });
+
+  // Add amount_status column if not exists
+  db.run(`ALTER TABLE events ADD COLUMN amount_status INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add amount_status column:', err.message);
+    } else {
+      console.log('amount_status column ensured');
+    }
+  });
+
+  // Add Stage column if not exists
+  db.run(`ALTER TABLE events ADD COLUMN Stage TEXT DEFAULT 'ENQUIRY'`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add Stage column:', err.message);
+    } else {
+      console.log('Stage column ensured');
+    }
+  });
+
+  // Add venue column if not exists
+  db.run(`ALTER TABLE events ADD COLUMN venue TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add venue column:', err.message);
+    } else {
+      console.log('venue column ensured');
+    }
+  });
+
+  // Add guest_count column if not exists
+  db.run(`ALTER TABLE events ADD COLUMN guest_count INTEGER`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add guest_count column:', err.message);
+    } else {
+      console.log('guest_count column ensured');
+    }
+  });
+
+  // Add enquiry_message column if not exists
+  db.run(`ALTER TABLE events ADD COLUMN enquiry_message TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add enquiry_message column:', err.message);
+    } else {
+      console.log('enquiry_message column ensured');
+    }
+  });
+
+  // Add source column if not exists
+  db.run(`ALTER TABLE events ADD COLUMN source TEXT DEFAULT 'WEBSITE'`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add source column:', err.message);
+    } else {
+      console.log('source column ensured');
+    }
+  });
+
   // Add password_hash and is_account_active columns to clients if not exists
   db.run(`ALTER TABLE clients ADD COLUMN password_hash TEXT`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {

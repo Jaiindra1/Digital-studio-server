@@ -174,7 +174,7 @@ exports.updateAmount = (req, res) => {
 
   const sql = `
     UPDATE events
-    SET total_amount = ?, updated_at = CURRENT_TIMESTAMP
+    SET amount = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `;
 
@@ -186,7 +186,7 @@ exports.updateAmount = (req, res) => {
     res.json({
       message: 'Amount updated successfully',
       eventId,
-      total_amount: amount
+      amount
     });
   });
 };

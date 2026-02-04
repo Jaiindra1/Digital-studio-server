@@ -42,6 +42,13 @@ CREATE TABLE IF NOT EXISTS events (
     CHECK(status IN ('NEW','ASSIGNED','SHOOT_DONE','DELIVERED','CANCELLED')),
   total_amount REAL DEFAULT 0,
   paid_amount REAL DEFAULT 0,
+  amount REAL DEFAULT 0,
+  amount_status INTEGER DEFAULT 0,
+  Stage TEXT DEFAULT 'ENQUIRY',
+  venue TEXT,
+  guest_count INTEGER,
+  enquiry_message TEXT,
+  source TEXT DEFAULT 'WEBSITE',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
