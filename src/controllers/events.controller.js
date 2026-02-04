@@ -1,5 +1,6 @@
 const db = require('../db/db');
-// 1. staff
+
+  // 1. staff
 exports.assignStaff = (req, res) => {
   const { eventId } = req.params;
   const { staffIds, roles = {} } = req.body;
@@ -71,32 +72,43 @@ db.get(
   // 2. Get all events
 exports.getAllEvents = (req, res) => {
   const sql = `
-    SELECT
-      e.id AS event_id,
-      e.event_type,
-      e.event_date,
-      e.start_time,
-      e.end_time,
-      e.location,
-      e.status,
-      e.created_at,
-      e.amount,
-      e.amount_status,
-      c.id AS client_id,
-      c.name AS client_name,
-      c.email As client_email,
-      c.phone AS client_phone,
-      c.address AS client_address,
-      C.created_at AS client_created_at,
-      s.id AS staff_id,
-      s.name AS staff_name,
-      s.role AS staff_role
-    FROM events e
-    JOIN clients c ON c.id = e.client_id
-    LEFT JOIN event_staff es ON es.event_id = e.id
-    LEFT JOIN staff s ON s.id = es.staff_id
-    ORDER BY e.event_date DESC, e.created_at DESC
-  `;
+  SELECT
+    e.id AS event_id,
+    e.event_type,
+    e.event_date,
+    e.start_time,
+    e.end_time,
+    e.location,
+    e.status,
+    e.created_at,
+    e.amount,
+    e.Stage,
+    e.venue,
+    e.guest_count,
+    e.enquiry_message,
+    e.amount_status,
+
+    c.id AS client_id,
+    c.name AS client_name,
+    c.email AS client_email,
+    c.phone AS client_phone,
+    c.address AS client_address,
+    c.created_at AS client_created_at,
+
+    s.id AS staff_id,
+    s.name AS staff_name,
+    s.role AS staff_role,
+
+    ec.reason AS cancellation_reason
+
+  FROM events e
+  JOIN clients c ON c.id = e.client_id
+  LEFT JOIN event_staff es ON es.event_id = e.id
+  LEFT JOIN staff s ON s.id = es.staff_id
+  LEFT JOIN event_cancellations ec ON ec.event_id = e.id
+  ORDER BY e.event_date DESC, e.created_at DESC
+`;
+
 
   db.all(sql, [], (err, rows) => {
     if (err) {
@@ -106,45 +118,52 @@ exports.getAllEvents = (req, res) => {
     // Group rows by event
     const eventsMap = {};
 
-    rows.forEach(row => {
-      if (!eventsMap[row.event_id]) {
-        eventsMap[row.event_id] = {
-          event_id: row.event_id,
-          eventType: row.event_type,
-          eventDate: row.event_date,
-          startTime: row.start_time,
-          endTime: row.end_time,
-          location: row.location,
-          status: row.status,
-          createdAt: row.created_at,
-          amount: row.amount,
-          amount_status: row.amount_status,
-          client: {
-            id: row.client_id,
-            name: row.client_name,
-            phone: row.client_phone,
-            email: row.client_email,
-            address: row.client_address,
-            createdAt: row.client_created_at
-          },
-          staff: []
-        };
-      }
+      rows.forEach(row => {
+        if (!eventsMap[row.event_id]) {
+          eventsMap[row.event_id] = {
+            event_id: row.event_id,
+            eventStage: row.Stage,
+            venue: row.venue,
+            guestCount: row.guest_count,
+            enquiryMessage: row.enquiry_message,
+            eventType: row.event_type,
+            eventDate: row.event_date,
+            startTime: row.start_time,
+            endTime: row.end_time,
+            location: row.location,
+            status: row.status,
+            createdAt: row.created_at,
+            amount: row.amount,
+            amount_status: row.amount_status,
+            cancellationReason: row.cancellation_reason || null,
 
-      if (row.staff_id) {
-        eventsMap[row.event_id].staff.push({
-          id: row.staff_id,
-          name: row.staff_name,
-          role: row.staff_role
-        });
-      }
-    });
+            client: {
+              id: row.client_id,
+              name: row.client_name,
+              phone: row.client_phone,
+              email: row.client_email,
+              address: row.client_address,
+              createdAt: row.client_created_at
+            },
+            staff: []
+          };
+        }
 
-    res.json(Object.values(eventsMap));
+        if (row.staff_id) {
+          eventsMap[row.event_id].staff.push({
+            id: row.staff_id,
+            name: row.staff_name,
+            role: row.staff_role
+          });
+        }
+      });
+
+      res.json(Object.values(eventsMap));
+
   });
 };
 
- // 3. Update event amount and set amount_status to 1 (paid)
+  // 3. Update event amount and set amount_status to 1 (paid)
 exports.updateAmount = (req, res) => {
   const { eventId } = req.params;
   const { amount } = req.body;
@@ -155,7 +174,7 @@ exports.updateAmount = (req, res) => {
 
   const sql = `
     UPDATE events
-    SET amount = ?, amount_status = 1, updated_at = CURRENT_TIMESTAMP
+    SET total_amount = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `;
 
@@ -167,13 +186,12 @@ exports.updateAmount = (req, res) => {
     res.json({
       message: 'Amount updated successfully',
       eventId,
-      amount,
-      amount_status: 1
+      total_amount: amount
     });
   });
 };
 
-// 4. Create Event (Admin – Offline / Manual)
+  // 4. Create Event (Admin – Offline / Manual)
 exports.createEvent = (req, res) => {
   const {
     client_name,
@@ -264,7 +282,7 @@ exports.createEvent = (req, res) => {
   });
 };
 
-// 5. Update Event Details
+  // 5. Update Event Details
 exports.updateEvent = (req, res) => {
   const { eventId } = req.params;
   const {
@@ -273,7 +291,9 @@ exports.updateEvent = (req, res) => {
     start_time,
     end_time,
     location,
-    status
+    status,
+    stage,
+    amount
   } = req.body;
 
   const updates = [];
@@ -286,6 +306,9 @@ exports.updateEvent = (req, res) => {
   if (end_time !== undefined) { updates.push('end_time = ?'); values.push(end_time); }
   if (location !== undefined) { updates.push('location = ?'); values.push(location); }
   if (status !== undefined) { updates.push('status = ?'); values.push(status); }
+  if (stage !== undefined) { updates.push('stage = ?'); values.push(stage); }
+  if (amount !== undefined) { updates.push('amount = ?'); values.push(amount); }
+
 
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No fields provided for update' });
@@ -314,7 +337,7 @@ exports.updateEvent = (req, res) => {
   });
 };
 
-// 6. Update Staff Details for an Event (Role, Attendance)
+  // 6. Update Staff Details for an Event (Role, Attendance)
 exports.updateEventStaff = (req, res) => {
   const { eventId, staffId } = req.params;
   const { role, attended } = req.body;
@@ -355,6 +378,66 @@ exports.updateEventStaff = (req, res) => {
       eventId,
       staffId,
       updatedFields: req.body
+    });
+  });
+};
+
+  // 7. Remove staff assignment from an event
+exports.removeEventStaff = (req, res) => {
+  const { eventId, staffId } = req.params;
+
+  const sql = `DELETE FROM event_staff WHERE event_id = ? AND staff_id = ?`;
+  db.run(sql, [eventId, staffId], function (err) {
+    if (err) return res.status(500).json({ error: err.message });
+    if (this.changes === 0) return res.status(404).json({ error: 'Staff assignment not found' });
+    res.json({ message: 'Staff removed from event', eventId, staffId });
+  });
+};
+
+  // 8. Cancel event with reason and store who cancelled it
+exports.cancelEvent = (req, res) => {
+  const { eventId } = req.params;
+  const { reason } = req.body;
+
+  console.log('cancelEvent called:', { eventId, reason, user: req.user });
+
+  // 1. Check event exists
+  db.get(`SELECT id, status FROM events WHERE id = ?`, [eventId], (err, event) => {
+    if (err) {
+      console.error('Error checking event:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    if (!event) {
+      console.error('Event not found:', eventId);
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    console.log('Event found:', event);
+
+    // 2. Mark event cancelled
+    db.run(`UPDATE events SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [eventId], function (err) {
+      if (err) {
+        console.error('Error updating event:', err);
+        return res.status(500).json({ error: 'Failed to update event: ' + err.message });
+      }
+
+      console.log('Event updated to CANCELLED, changes:', this.changes);
+
+      // 3. Record cancellation reason with admin/staff info who cancelled it
+      const adminId = req.user && req.user.id ? req.user.id : null;
+      const adminEmail = req.user && req.user.email ? req.user.email : null;
+
+      console.log('Inserting cancellation record:', { eventId, adminId, adminEmail, reason });
+
+      db.run(`INSERT INTO event_cancellations (event_id, admin_id, admin_email, reason) VALUES (?, ?, ?, ?)`, [eventId, adminId, adminEmail, reason || null], (err) => {
+        if (err) {
+          console.error('Failed to save cancellation reason:', err);
+          return res.status(500).json({ error: 'Failed to save cancellation reason: ' + err.message });
+        }
+
+        console.log('Cancellation record inserted successfully');
+        res.json({ message: 'Event cancelled', eventId, cancelledBy: adminEmail });
+      });
     });
   });
 };

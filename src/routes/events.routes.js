@@ -9,6 +9,9 @@ router.use(authenticate);
 // Assign staff to event
 router.get('/', controller.getAllEvents);
 router.post('/:eventId/assign-staff', controller.assignStaff);
+router.post('/:eventId/cancel', controller.cancelEvent);
+router.delete('/:eventId/staff/:staffId', controller.removeEventStaff);
+router.patch('/:eventId/staff/:staffId', controller.updateEventStaff);
 router.post('/',  controller.createEvent);
 router.put('/:eventId', controller.updateEvent);
 router.patch('/:eventId/amount', controller.updateAmount);

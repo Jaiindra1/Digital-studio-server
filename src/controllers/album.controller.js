@@ -142,10 +142,17 @@ exports.uploadMediaToAlbum = async (req, res) => {
       if (file.path) fs.unlink(file.path, () => {});
     }
 
-    res.status(201).json({
-      message: "Media uploaded successfully",
-      count: uploaded.length
-    });
+    // Persist notification and emit to admins about gallery upload
+    try {
+      const payload = JSON.stringify({ albumId: album_id, galleryId: gallery_id, count: uploaded.length, uploaded });
+      await new Promise((resolve, reject) => db.run(`INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`, ['GALLERY_UPLOAD', payload, null], (err) => (err ? reject(err) : resolve())));
+      const io = req.app.get('io');
+      if (io) io.to('admins').emit('galleryUpload', JSON.parse(payload));
+    } catch (e) {
+      console.warn('Failed to persist/emit galleryUpload:', e.message);
+    }
+
+    res.status(201).json({ message: "Media uploaded successfully", count: uploaded.length });
   } catch (err) {
     console.error("[UPLOAD ERROR]", err);
     res.status(500).json({ error: err.message });
@@ -417,6 +424,18 @@ exports.updateAlbumFull = async (req, res) => {
       await new Promise((res) => 
         db.run(`UPDATE albums SET cover_key = ? WHERE id = ?`, [finalCoverKey, album_id], res)
       );
+    }
+
+    // Persist notification & emit if new files were uploaded
+    try {
+      if (newFiles.length > 0) {
+        const payload = JSON.stringify({ albumId: album_id, galleryId: gallery_id, count: newFiles.length });
+        await new Promise((resolve, reject) => db.run(`INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`, ['GALLERY_UPLOAD', payload, null], (err) => (err ? reject(err) : resolve())));
+        const io = req.app.get('io');
+        if (io) io.to('admins').emit('galleryUpload', JSON.parse(payload));
+      }
+    } catch (e) {
+      console.warn('Failed to persist/emit galleryUpload on update:', e.message);
     }
 
     res.json({ message: "Album updated successfully", cover_updated_to: finalCoverKey });

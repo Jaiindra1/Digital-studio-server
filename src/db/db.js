@@ -36,6 +36,49 @@ db.exec(schema, (err) => {
     process.exit(1);
   }
   console.log('Database schema loaded');
+
+  // Add paid_amount column to events if not exists
+  db.run(`ALTER TABLE events ADD COLUMN paid_amount REAL DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add paid_amount column:', err.message);
+    } else {
+      console.log('paid_amount column ensured');
+    }
+  });
+
+  // Add total_amount column to events if not exists
+  db.run(`ALTER TABLE events ADD COLUMN total_amount REAL DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add total_amount column:', err.message);
+    } else {
+      console.log('total_amount column ensured');
+      // Set default amount for existing events
+      db.run(`UPDATE events SET total_amount = 1000 WHERE total_amount = 0 OR total_amount IS NULL`, (err) => {
+        if (err) {
+          console.error('Failed to set default total_amount:', err.message);
+        } else {
+          console.log('Default total_amount set for existing events');
+        }
+      });
+    }
+  });
+
+  // Add password_hash and is_account_active columns to clients if not exists
+  db.run(`ALTER TABLE clients ADD COLUMN password_hash TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add password_hash column to clients:', err.message);
+    } else {
+      console.log('password_hash column to clients ensured');
+    }
+  });
+
+  db.run(`ALTER TABLE clients ADD COLUMN is_account_active INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add is_account_active column to clients:', err.message);
+    } else {
+      console.log('is_account_active column to clients ensured');
+    }
+  });
 });
 
 // Add this wrapper to support async/await and the .query() syntax

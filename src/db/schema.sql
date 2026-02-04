@@ -40,9 +40,51 @@ CREATE TABLE IF NOT EXISTS events (
   location TEXT,
   status TEXT NOT NULL DEFAULT 'NEW'
     CHECK(status IN ('NEW','ASSIGNED','SHOOT_DONE','DELIVERED','CANCELLED')),
+  total_amount REAL DEFAULT 0,
+  paid_amount REAL DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 
   FOREIGN KEY (client_id) REFERENCES clients(id)
 );
 
+CREATE TABLE IF NOT EXISTS event_cancellations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL,
+  admin_id INTEGER,
+  admin_email TEXT,
+  reason TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (event_id) REFERENCES events(id)
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  payload TEXT,
+  user_id INTEGER,
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  method TEXT,
+  reference TEXT,
+  recorded_by INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (event_id) REFERENCES events(id),
+  FOREIGN KEY (recorded_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS password_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  used INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);

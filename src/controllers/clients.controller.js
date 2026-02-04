@@ -28,11 +28,18 @@ exports.create = (req, res) => {
   db.run(sql, [name, phone, email, address, notes], function (err) {
     if (err) return res.status(500).json({ error: err.message });
 
-    res.status(201).json({
-      id: this.lastID,
-      name,
-      phone,
-      email
+    const clientId = this.lastID;
+    const payload = JSON.stringify({ clientId, name, phone, email });
+
+    db.run(`INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`, ['NEW_CLIENT', payload, null], function (nErr) {
+      if (nErr) console.warn('Failed to persist new client notification:', nErr.message);
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to('admins').emit('newClient', JSON.parse(payload));
+      }
+
+      res.status(201).json({ id: clientId, name, phone, email });
     });
   });
 };

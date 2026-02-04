@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const db = require('../db/db');
 
 module.exports = function authenticate(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -20,9 +21,34 @@ module.exports = function authenticate(req, res, next) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    req.user = decoded; // attach user payload
-    next();
+    // Normalize user object - handle both old (id) and new (sub) formats
+    const userId = decoded.id || decoded.sub;
+    
+    // If email is in token, use it; otherwise fetch from database
+    if (decoded.email) {
+      req.user = {
+        id: userId,
+        email: decoded.email,
+        role: decoded.role
+      };
+      next();
+    } else {
+      // Fetch email from database
+      db.get(`SELECT email FROM users WHERE id = ?`, [userId], (err, user) => {
+        if (err) {
+          console.error('Error fetching user email:', err);
+          req.user = { id: userId, email: null, role: decoded.role };
+        } else if (user) {
+          req.user = { id: userId, email: user.email, role: decoded.role };
+        } else {
+          req.user = { id: userId, email: null, role: decoded.role };
+        }
+        next();
+      });
+    }
   } catch (err) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
 };
+
+
