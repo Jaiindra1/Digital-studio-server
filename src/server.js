@@ -6,6 +6,7 @@ const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
     origin: ['http://localhost:3000', 'http://localhost:3001', 'https://digital-studio-chi.vercel.app'],
+    methods: ['GET', 'POST'],
     credentials: true
   }
 });
@@ -42,5 +43,5 @@ io.on('connection', (socket) => {
 // Make io available in routes/controllers
 app.set('io', io);
 
-const PORT = process.env.PORT ;
+const PORT = process.env.PORT || 4000 ;
 server.listen(PORT, () => console.log(`Server running on ${PORT}`));
