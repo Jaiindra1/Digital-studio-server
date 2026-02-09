@@ -8,4 +8,7 @@ router.post('/notify', paymentsController.notify);
 // Record a payment manually by admin
 router.post('/record', paymentsController.record);
 
+//Get payment details
+router.get('/details/:eventId', paymentsController.getPayments);
+
 module.exports = router;

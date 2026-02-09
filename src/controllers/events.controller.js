@@ -87,6 +87,7 @@ exports.getAllEvents = (req, res) => {
     e.guest_count,
     e.enquiry_message,
     e.amount_status,
+    e.advance,
 
     c.id AS client_id,
     c.name AS client_name,
@@ -134,6 +135,7 @@ exports.getAllEvents = (req, res) => {
             status: row.status,
             createdAt: row.created_at,
             amount: row.amount,
+            advance: row.advance,
             amount_status: row.amount_status,
             cancellationReason: row.cancellation_reason || null,
 
@@ -293,22 +295,36 @@ exports.updateEvent = (req, res) => {
     location,
     status,
     stage,
+    advance,
     amount
   } = req.body;
 
   const updates = [];
   const values = [];
-
+  
   // Dynamically build the query based on provided fields
   if (event_type !== undefined) { updates.push('event_type = ?'); values.push(event_type); }
   if (event_date !== undefined) { updates.push('event_date = ?'); values.push(event_date); }
   if (start_time !== undefined) { updates.push('start_time = ?'); values.push(start_time); }
   if (end_time !== undefined) { updates.push('end_time = ?'); values.push(end_time); }
   if (location !== undefined) { updates.push('location = ?'); values.push(location); }
-  if (status !== undefined) { updates.push('status = ?'); values.push(status); }
-  if (stage !== undefined) { updates.push('stage = ?'); values.push(stage); }
+  if (status !== undefined) {
+    const normalizedStatus = String(status).toUpperCase();
+    // Accept friendly value "CONFIRMED" from frontend and map to allowed status
+    if (normalizedStatus === 'CONFIRMED') {
+      updates.push('status = ?');
+      values.push('ASSIGNED');
+    } else if (['NEW', 'ASSIGNED', 'SHOOT_DONE', 'DELIVERED', 'CANCELLED'].includes(normalizedStatus)) {
+      updates.push('status = ?');
+      values.push(normalizedStatus);
+    } else {
+      return res.status(400).json({ error: `Invalid status value: ${status}` });
+    }
+  }
+  if (stage !== undefined) { updates.push('Stage = ?'); values.push(stage); }
   if (amount !== undefined) { updates.push('amount = ?'); values.push(amount); }
-
+  if (advance !== undefined) { updates.push('advance = ?'); values.push(advance); }
+  console.log(values);
 
   if (updates.length === 0) {
     return res.status(400).json({ error: 'No fields provided for update' });
@@ -325,7 +341,10 @@ exports.updateEvent = (req, res) => {
   values.push(eventId);
 
   db.run(sql, values, function (err) {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) {
+      console.error('Database Error:', err);
+      return res.status(500).json({ error: err.message });
+    }
     if (this.changes === 0)
       return res.status(404).json({ error: 'Event not found' });
 

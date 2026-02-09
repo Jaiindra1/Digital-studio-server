@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS events (
   paid_amount REAL DEFAULT 0,
   amount REAL DEFAULT 0,
   amount_status INTEGER DEFAULT 0,
+  advance REAL DEFAULT 0,
   Stage TEXT DEFAULT 'ENQUIRY',
   venue TEXT,
   guest_count INTEGER,

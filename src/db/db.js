@@ -147,6 +147,15 @@ db.exec(schema, (err) => {
       console.log('is_account_active column to clients ensured');
     }
   });
+
+  // Add advance column to events if not exists
+  db.run(`ALTER TABLE events ADD COLUMN advance REAL DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add advance column:', err.message);
+    } else {
+      console.log('advance column ensured');
+    }
+  });
 });
 
 // Add this wrapper to support async/await and the .query() syntax
