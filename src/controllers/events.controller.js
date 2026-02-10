@@ -1,4 +1,34 @@
 const db = require('../db/db');
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
+
+// Email transporter using Gmail (or other SMTP) from env
+const transporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
+  port: process.env.EMAIL_PORT ? Number(process.env.EMAIL_PORT) : 587,
+  secure: process.env.EMAIL_PORT === '465',
+  auth: process.env.EMAIL_USER ? {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  } : undefined
+});
+
+// Helper to send mail; falls back to console logging when EMAIL not configured (dev mode)
+function sendMailWithFallback(mailOptions, cb) {
+  const usingRealEmail = !!(process.env.EMAIL_HOST && process.env.EMAIL_USER);
+  if (usingRealEmail) {
+    return transporter.sendMail(mailOptions, cb);
+  }
+
+  // In dev/test, just log the email details and return success
+  console.log('Dev mode: Simulated email send to', mailOptions.to);
+  console.log('Subject:', mailOptions.subject);
+  const linkMatch = mailOptions.html.match(/href="([^"]+)"/);
+  if (linkMatch) {
+    console.log('Link in email:', linkMatch[1]);
+  }
+  cb(null, { messageId: 'dev-' + Date.now() });
+}
 
   // 1. staff
 exports.assignStaff = (req, res) => {
@@ -347,12 +377,68 @@ exports.updateEvent = (req, res) => {
     }
     if (this.changes === 0)
       return res.status(404).json({ error: 'Event not found' });
+    // If stage was set to CONFIRMED, create a password token and email the client
+    const stageValue = (stage || '').toString().toUpperCase();
+    if (stage !== undefined && stageValue === 'CONFIRMED') {
+      // Get client info
+      db.get(`SELECT c.id as client_id, c.email as client_email FROM events e JOIN clients c ON c.id = e.client_id WHERE e.id = ?`, [eventId], (err, row) => {
+        if (err) {
+          console.error('Failed to fetch client for event:', err);
+          return res.json({ message: 'Event updated successfully, but failed to notify client' , eventId, updatedFields: req.body });
+        }
 
-    res.json({
-      message: 'Event updated successfully',
-      eventId,
-      updatedFields: req.body
-    });
+        if (!row || !row.client_email) {
+          console.warn('No client email found for event', eventId);
+          return res.json({ message: 'Event updated successfully (no client email)', eventId, updatedFields: req.body });
+        }
+
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+
+        db.run(`INSERT INTO password_tokens (client_id, token, expires_at) VALUES (?, ?, ?)`, [row.client_id, token, expiresAt], (err) => {
+          if (err) {
+            console.error('Failed to insert password token:', err);
+            return res.json({ message: 'Event updated, but failed to create token', eventId, updatedFields: req.body });
+          }
+
+          const clientUrl = process.env.CLIENT_BASE_URL ? process.env.CLIENT_BASE_URL.replace(/\/$/, '') : '';
+          const link = `${clientUrl}/create-password?token=${token}`;
+
+          const mailOptions = {
+            from: process.env.EMAIL_FROM || 'no-reply@studio.com',
+            to: row.client_email,
+            subject: 'Set your account password',
+            html: `<p>Hi,</p>
+                   <p>Your event has been confirmed. Please set your account password using the link below:</p>
+                   <p><a href="${link}">Set your password</a></p>
+                   <p>If the link doesn't work, paste this URL into your browser:</p>
+                   <p>${link}</p>
+                   <p>This link will expire in 24 hours.</p>`
+          };
+
+          sendMailWithFallback(mailOptions, (err, info) => {
+            if (err) {
+              console.error('Failed to send create-password email:', err);
+              return res.json({ message: 'Event updated, but failed to send email', eventId, updatedFields: req.body });
+            }
+
+            // If using Ethereal, include preview URL in logs
+            try {
+              const preview = nodemailer.getTestMessageUrl(info);
+              if (preview) console.log('Preview URL:', preview);
+            } catch (e) {}
+
+            return res.json({ message: 'Event updated and password link sent to client', eventId, updatedFields: req.body });
+          });
+        });
+      });
+    } else {
+      return res.json({
+        message: 'Event updated successfully',
+        eventId,
+        updatedFields: req.body
+      });
+    }
   });
 };
 
