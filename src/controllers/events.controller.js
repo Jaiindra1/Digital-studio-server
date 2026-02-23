@@ -1,6 +1,8 @@
 const db = require('../db/db');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const emailTemplates = require('./emailTemplates.controller');
+const { getNotificationSettings } = require('./notifications.controller');
 
 // Email transporter using Gmail (or other SMTP) from env
 const transporter = nodemailer.createTransport({
@@ -380,8 +382,16 @@ exports.updateEvent = (req, res) => {
     // If stage was set to CONFIRMED, create a password token and email the client
     const stageValue = (stage || '').toString().toUpperCase();
     if (stage !== undefined && stageValue === 'CONFIRMED') {
-      // Get client info
-      db.get(`SELECT c.id as client_id, c.email as client_email FROM events e JOIN clients c ON c.id = e.client_id WHERE e.id = ?`, [eventId], (err, row) => {
+      // Get client + event info
+      db.get(`SELECT 
+                c.id as client_id, 
+                c.email as client_email,
+                c.name as client_name,
+                e.event_type as event_type,
+                e.event_date as event_date
+              FROM events e 
+              JOIN clients c ON c.id = e.client_id 
+              WHERE e.id = ?`, [eventId], (err, row) => {
         if (err) {
           console.error('Failed to fetch client for event:', err);
           return res.json({ message: 'Event updated successfully, but failed to notify client' , eventId, updatedFields: req.body });
@@ -404,32 +414,86 @@ exports.updateEvent = (req, res) => {
           const clientUrl = process.env.CLIENT_BASE_URL ? process.env.CLIENT_BASE_URL.replace(/\/$/, '') : '';
           const link = `${clientUrl}/create-password?token=${token}`;
 
-          const mailOptions = {
-            from: process.env.EMAIL_FROM || 'no-reply@studio.com',
-            to: row.client_email,
-            subject: 'Set your account password',
-            html: `<p>Hi,</p>
+          const baseSubject = 'Set your account password';
+          const baseHtml = `<p>Hi ${row.client_name || ''},</p>
                    <p>Your event has been confirmed. Please set your account password using the link below:</p>
                    <p><a href="${link}">Set your password</a></p>
                    <p>If the link doesn't work, paste this URL into your browser:</p>
                    <p>${link}</p>
-                   <p>This link will expire in 24 hours.</p>`
+                   <p>This link will expire in 24 hours.</p>`;
+
+          const vars = {
+            clientName: row.client_name || '',
+            eventType: row.event_type || '',
+            eventDate: row.event_date || '',
+            link,
           };
 
-          sendMailWithFallback(mailOptions, (err, info) => {
-            if (err) {
-              console.error('Failed to send create-password email:', err);
-              return res.json({ message: 'Event updated, but failed to send email', eventId, updatedFields: req.body });
-            }
+          const applyVars = (text) =>
+            text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key) => (vars[key] != null ? String(vars[key]) : ''));
 
-            // If using Ethereal, include preview URL in logs
-            try {
-              const preview = nodemailer.getTestMessageUrl(info);
-              if (preview) console.log('Preview URL:', preview);
-            } catch (e) {}
+          emailTemplates
+            .findByKey('BOOKING_CONFIRMATION')
+            .then((tpl) => {
+              let subject = baseSubject;
+              let html = baseHtml;
 
-            return res.json({ message: 'Event updated and password link sent to client', eventId, updatedFields: req.body });
-          });
+              if (tpl) {
+                subject = applyVars(tpl.subject || baseSubject);
+                html = applyVars(tpl.html_body || baseHtml);
+
+                if (tpl.hero_image_url) {
+                  const imgTag = `<p><img src="${tpl.hero_image_url}" alt="" style="max-width:100%;border-radius:8px;" /></p>`;
+                  html = imgTag + html;
+                }
+              }
+
+              const mailOptions = {
+                from: process.env.EMAIL_FROM || 'no-reply@studio.com',
+                to: row.client_email,
+                subject,
+                html,
+              };
+
+              sendMailWithFallback(mailOptions, (err, info) => {
+                if (err) {
+                  console.error('Failed to send create-password email:', err);
+                  return res.json({ message: 'Event updated, but failed to send email', eventId, updatedFields: req.body });
+                }
+
+                // If using Ethereal, include preview URL in logs
+                try {
+                  const preview = nodemailer.getTestMessageUrl(info);
+                  if (preview) console.log('Preview URL:', preview);
+                } catch (e) {}
+
+                return res.json({ message: 'Event updated and password link sent to client', eventId, updatedFields: req.body });
+              });
+            })
+            .catch((tplErr) => {
+              console.error('Email template lookup failed, sending default mail:', tplErr);
+
+              const mailOptions = {
+                from: process.env.EMAIL_FROM || 'no-reply@studio.com',
+                to: row.client_email,
+                subject: baseSubject,
+                html: baseHtml,
+              };
+
+              sendMailWithFallback(mailOptions, (err, info) => {
+                if (err) {
+                  console.error('Failed to send create-password email:', err);
+                  return res.json({ message: 'Event updated, but failed to send email', eventId, updatedFields: req.body });
+                }
+
+                try {
+                  const preview = nodemailer.getTestMessageUrl(info);
+                  if (preview) console.log('Preview URL:', preview);
+                } catch (e) {}
+
+                return res.json({ message: 'Event updated and password link sent to client', eventId, updatedFields: req.body });
+              });
+            });
         });
       });
     } else {
@@ -534,15 +598,65 @@ exports.cancelEvent = (req, res) => {
 
       console.log('Inserting cancellation record:', { eventId, adminId, adminEmail, reason });
 
-      db.run(`INSERT INTO event_cancellations (event_id, admin_id, admin_email, reason) VALUES (?, ?, ?, ?)`, [eventId, adminId, adminEmail, reason || null], (err) => {
-        if (err) {
-          console.error('Failed to save cancellation reason:', err);
-          return res.status(500).json({ error: 'Failed to save cancellation reason: ' + err.message });
-        }
+      db.run(
+        `INSERT INTO event_cancellations (event_id, admin_id, admin_email, reason) VALUES (?, ?, ?, ?)`,
+        [eventId, adminId, adminEmail, reason || null],
+        (err) => {
+          if (err) {
+            console.error('Failed to save cancellation reason:', err);
+            return res
+              .status(500)
+              .json({ error: 'Failed to save cancellation reason: ' + err.message });
+          }
 
-        console.log('Cancellation record inserted successfully');
-        res.json({ message: 'Event cancelled', eventId, cancelledBy: adminEmail });
-      });
+          console.log('Cancellation record inserted successfully');
+
+          const io = req.app.get('io');
+
+          const finish = () =>
+            res.json({ message: 'Event cancelled', eventId, cancelledBy: adminEmail });
+
+          // Respect bookingAlerts.cancellations setting for admin notifications
+          getNotificationSettings()
+            .then((settings) => {
+              const alerts = settings && settings.bookingAlerts ? settings.bookingAlerts : {};
+
+              if (!alerts.cancellations) {
+                return finish();
+              }
+
+              const payload = JSON.stringify({
+                eventId,
+                reason: reason || null,
+                cancelledBy: adminEmail,
+              });
+
+              db.run(
+                `INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`,
+                ['EVENT_CANCELLED', payload, adminId],
+                (nErr) => {
+                  if (nErr) {
+                    console.warn('Failed to persist EVENT_CANCELLED notification:', nErr.message);
+                  }
+
+                  if (io) {
+                    io.to('admins').emit('eventCancelled', JSON.parse(payload));
+                  }
+
+                  finish();
+                }
+              );
+            })
+            .catch((settingsErr) => {
+              console.warn(
+                'Failed to load notification settings for EVENT_CANCELLED:',
+                settingsErr.message || settingsErr
+              );
+              // Fallback: just respond, no extra notification
+              finish();
+            });
+        }
+      );
     });
   });
 };

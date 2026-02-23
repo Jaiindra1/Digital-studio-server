@@ -27,6 +27,8 @@ app.use('/api/public', require('./routes/public.routes'));
 app.use('/api/booking', require('./routes/booking.routes'));
 app.use('/api/payments', require('./routes/payments.routes'));
 app.use('/api/notifications', require('./routes/notifications.routes'));
-
+app.use('/api/Cart', require('./routes/cart.routes'));
+app.use('/api/products', require('./routes/products.routes'));
+app.use('/api/email-templates', require('./routes/emailTemplates.routes'));
 
 module.exports = app;

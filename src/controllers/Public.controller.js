@@ -245,12 +245,13 @@ exports.getAlbumsByCategory = async (req, res) => {
     const rows = await new Promise((resolve, reject) => {
       db.all(
         `
-        SELECT * FROM albums 
-        WHERE label_id IN (
-        SELECT id 
-        FROM gallery 
-        WHERE category = ?
-        )
+        SELECT 
+          a.*,
+          g.name AS label_name,
+          g.category AS gallery_category
+        FROM albums a
+        JOIN gallery g ON g.id = a.label_id
+        WHERE g.category = ?
         `,
         [category],
         (err, rows) => (err ? reject(err) : resolve(rows))
@@ -274,6 +275,79 @@ exports.getAlbumsByCategory = async (req, res) => {
 
     res.json(albumsWithCovers);
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+
+/////////////////////////////////////////////////
+// for public Main page
+////////////////////////////////////////////////
+
+// GET /public/main-albums
+// Return 2 latest albums with signed cover image URLs for the public landing page
+exports.getMainPageAlbums = async (req, res) => {
+  try {
+    const bucket = process.env.S3_BUCKET_NAME;
+
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `
+        SELECT
+          a.id,
+          a.name,
+          a.created_at,
+          g.name AS label_name,
+          g.category AS category,
+          COUNT(m.id) AS media_count,
+          (
+            SELECT s3_url
+            FROM gallery_media
+            WHERE s3_url = a.cover_key
+            ORDER BY created_at ASC
+            LIMIT 1
+          ) AS cover_image
+        FROM albums a
+        JOIN gallery g ON g.id = a.label_id
+        LEFT JOIN gallery_media m ON m.album_id = a.id
+        GROUP BY a.id
+        ORDER BY a.created_at DESC
+        LIMIT 2
+        `,
+        [],
+        (err, rows) => (err ? reject(err) : resolve(rows))
+      );
+    });
+
+    const signedAlbums = await Promise.all(
+      rows.map(async (album) => {
+        let signedCover = null;
+
+        if (album.cover_image && bucket) {
+          try {
+            const command = new GetObjectCommand({
+              Bucket: bucket,
+              Key: album.cover_image,
+            });
+
+            signedCover = await getSignedUrl(s3Client, command, {
+              expiresIn: 3600,
+            });
+          } catch (err) {
+            console.error("Cover signing failed (main page):", err.message);
+          }
+        }
+
+        return {
+          ...album,
+          cover_image: signedCover,
+        };
+      })
+    );
+
+    res.json(signedAlbums);
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 };

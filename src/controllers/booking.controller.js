@@ -1,4 +1,5 @@
 const db = require('../db/db');
+const { getNotificationSettings } = require('./notifications.controller');
 
 // POST /api/booking
 exports.createBooking = (req, res) => {
@@ -27,7 +28,7 @@ exports.createBooking = (req, res) => {
   const findClientSql = `SELECT id FROM clients WHERE phone = ? LIMIT 1`;
 
   db.get(findClientSql, [phone], (err, client) => {
-    if (err) return res.status(500).json({ error: err.message });
+    if (err) return res.status(500).json({ error: err.message } );
 
     const createEvent = (clientId) => {
       const insertEventSql = `
@@ -51,23 +52,79 @@ exports.createBooking = (req, res) => {
         function (err) {
           if (err) return res.status(500).json({ error: err.message });
 
-          // Persist notification and emit to admins/staff (only to 'admins' room)
           const eventId = this.lastID;
-          const payload = JSON.stringify({ eventId, clientName: name, eventType: event_type, eventDate: event_date, phone });
 
-          db.run(`INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`, ['NEW_BOOKING', payload, null], function (nErr) {
-            if (nErr) console.warn('Failed to persist notification:', nErr.message);
+          // Check notification settings before creating NEW_BOOKING notification
+          getNotificationSettings()
+            .then((settings) => {
+              const alerts = settings && settings.bookingAlerts ? settings.bookingAlerts : {};
 
-            const io = req.app.get('io');
-            if (io) {
-              io.to('admins').emit('newBooking', JSON.parse(payload));
-            }
+              if (!alerts.newBookingRequest) {
+                return res.status(201).json({
+                  message: 'Booking enquiry submitted successfully (alerts disabled)',
+                  eventId,
+                });
+              }
 
-            res.status(201).json({
-              message: 'Booking enquiry submitted successfully',
-              eventId
+              const payload = JSON.stringify({
+                eventId,
+                clientName: name,
+                eventType: event_type,
+                eventDate: event_date,
+                phone,
+              });
+
+              db.run(
+                `INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`,
+                ['NEW_BOOKING', payload, null],
+                function (nErr) {
+                  if (nErr) console.warn('Failed to persist notification:', nErr.message);
+
+                  const io = req.app.get('io');
+                  if (io) {
+                    io.to('admins').emit('newBooking', JSON.parse(payload));
+                  }
+
+                  res.status(201).json({
+                    message: 'Booking enquiry submitted successfully',
+                    eventId,
+                  });
+                }
+              );
+            })
+            .catch((settingsErr) => {
+              console.warn(
+                'Failed to load notification settings for NEW_BOOKING:',
+                settingsErr.message || settingsErr
+              );
+
+              // Fallback: behave as before and send the notification
+              const payload = JSON.stringify({
+                eventId,
+                clientName: name,
+                eventType: event_type,
+                eventDate: event_date,
+                phone,
+              });
+
+              db.run(
+                `INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`,
+                ['NEW_BOOKING', payload, null],
+                function (nErr) {
+                  if (nErr) console.warn('Failed to persist notification:', nErr.message);
+
+                  const io = req.app.get('io');
+                  if (io) {
+                    io.to('admins').emit('newBooking', JSON.parse(payload));
+                  }
+
+                  res.status(201).json({
+                    message: 'Booking enquiry submitted successfully',
+                    eventId,
+                  });
+                }
+              );
             });
-          });
         }
       );
     };

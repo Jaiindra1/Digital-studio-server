@@ -1,4 +1,5 @@
 const db = require('../db/db');
+const { getNotificationSettings } = require('./notifications.controller');
 
 // POST /api/payments/notify
 exports.notify = async (req, res) => {
@@ -9,18 +10,42 @@ exports.notify = async (req, res) => {
   }
 
   try {
-    const payload = JSON.stringify({ invoiceId, amount, clientId: clientId || null, clientName: clientName || null, method: method || null, reference: reference || null, timestamp: new Date().toISOString() });
-
-    await new Promise((resolve, reject) => {
-      db.run(`INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`, ['PAYMENT_RECEIVED', payload, null], (err) => (err ? reject(err) : resolve()));
+    const settings = await getNotificationSettings().catch((e) => {
+      console.warn('Failed to load notification settings for payments.notify:', e.message || e);
+      return null;
     });
 
-    const io = req.app.get('io');
-    if (io) {
-      io.to('admins').emit('paymentReceived', JSON.parse(payload));
-    }
+    const alerts = settings && settings.bookingAlerts ? settings.bookingAlerts : null;
+    const notificationsEnabled = !alerts || alerts.depositReceived !== false;
 
-    res.json({ message: 'Notification persisted and emitted' });
+    const payload = JSON.stringify({
+      invoiceId,
+      amount,
+      clientId: clientId || null,
+      clientName: clientName || null,
+      method: method || null,
+      reference: reference || null,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (notificationsEnabled) {
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`,
+          ['PAYMENT_RECEIVED', payload, null],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to('admins').emit('paymentReceived', JSON.parse(payload));
+      }
+
+      res.json({ message: 'Notification persisted and emitted' });
+    } else {
+      res.json({ message: 'Payment notification suppressed by settings' });
+    }
   } catch (err) {
     console.error('Payment notify error:', err);
     res.status(500).json({ error: err.message });
@@ -81,35 +106,49 @@ exports.record = async (req, res) => {
       return res.status(404).json({ error: 'Event not found' });
     }
 
-    // 4. Create notification payload
-    const payload = JSON.stringify({
-      invoiceId: `BK-${eventId}`,
-      amount,
-      clientId: event.client_id,
-      clientName: event.clientName,
-      method: method || 'Manual',
-      reference: reference || null,
-      paymentType: type,
-      recordedBy,
-      timestamp: new Date().toISOString()
+    // 4. Create notification payload (respect bookingAlerts.depositReceived setting)
+    const settings = await getNotificationSettings().catch((e) => {
+      console.warn('Failed to load notification settings for payments.record:', e.message || e);
+      return null;
     });
 
-    await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO notifications (type, payload, user_id)
-         VALUES (?, ?, ?)`,
-        ['PAYMENT_RECEIVED', payload, null],
-        (err) => (err ? reject(err) : resolve())
-      );
-    });
+    const alerts = settings && settings.bookingAlerts ? settings.bookingAlerts : null;
+    const notificationsEnabled = !alerts || alerts.depositReceived !== false;
 
-    // 5. Emit to admins
-    const io = req.app.get('io');
-    if (io) {
-      io.to('admins').emit('paymentReceived', JSON.parse(payload));
+    if (notificationsEnabled) {
+      const payload = JSON.stringify({
+        invoiceId: `BK-${eventId}`,
+        amount,
+        clientId: event.client_id,
+        clientName: event.clientName,
+        method: method || 'Manual',
+        reference: reference || null,
+        paymentType: type,
+        recordedBy,
+        timestamp: new Date().toISOString(),
+      });
+
+      await new Promise((resolve, reject) => {
+        db.run(
+          `INSERT INTO notifications (type, payload, user_id)
+           VALUES (?, ?, ?)`,
+          ['PAYMENT_RECEIVED', payload, null],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+
+      // 5. Emit to admins
+      const io = req.app.get('io');
+      if (io) {
+        io.to('admins').emit('paymentReceived', JSON.parse(payload));
+      }
     }
 
-    res.json({ message: 'Payment recorded successfully' });
+    res.json({
+      message: notificationsEnabled
+        ? 'Payment recorded successfully'
+        : 'Payment recorded successfully (payment alerts disabled)',
+    });
 
   } catch (err) {
     console.error('Payment record error:', err);
@@ -117,50 +156,112 @@ exports.record = async (req, res) => {
   }
 };
 
-exports.getPayments = async (req, res) => {
-  const { eventId } = req.params;
-
-  if (!eventId) {
-    return res.status(400).json({ error: 'eventId is required' });
-  }
-
+exports.getPaymentsOverview = async (req, res) => {
   try {
-    const payments = await new Promise((resolve, reject) => {
-      let query = `
-        SELECT 
-          p.id,
-          p.event_id,
-          p.amount,
-          p.method,
-          p.reference,
-          p.payment_type,
-          p.recorded_by,
-          p.created_at
-        FROM payments p
-        WHERE p.event_id = ?
+    const { range } = req.query;
+
+    let dateFilter = "";
+    let params = [];
+
+    if (range === "30d") {
+      dateFilter = "AND e.event_date >= date('now','-30 day')";
+    }
+    else if (range === "quarter") {
+      dateFilter = `
+        AND strftime('%Y', e.event_date) = strftime('%Y', 'now')
+        AND ((cast(strftime('%m','now') as int)-1)/3) =
+            ((cast(strftime('%m',e.event_date) as int)-1)/3)
       `;
+    }
+    else if (range === "ytd") {
+      dateFilter = "AND e.event_date >= date(strftime('%Y-01-01','now'))";
+    }
 
-      const params = [eventId];
-
-      query += ` ORDER BY p.created_at DESC`;
-
-      db.all(query, params, (err, rows) =>
-        err ? reject(err) : resolve(rows)
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT
+          e.id as event_id,
+          e.amount as total_amount,
+          e.advance as advance_amount,
+          (SELECT SUM(p.amount) FROM payments p WHERE p.event_id = e.id) as other_payments
+        FROM events e
+        WHERE e.status != 'CANCELLED'
+        ${dateFilter}`,
+        params,
+        (err, rows) => (err ? reject(err) : resolve(rows))
       );
     });
 
-    if (!payments.length) {
-      return res.status(404).json({ message: 'No payments found' });
-    }
+    let totalRevenue = 0;
+    let totalPaid = 0;
+    let pendingEvents = 0;
+    let paidEvents = 0;
+
+    rows.forEach(row => {
+      const total = parseFloat(row.total_amount) || 0;
+      const advance = parseFloat(row.advance_amount) || 0;
+      const other = parseFloat(row.other_payments) || 0;
+      const paid = advance + other;
+
+      totalRevenue += total;
+      totalPaid += paid;
+
+      if (total > paid) pendingEvents++;
+      else if (total > 0 && total <= paid) paidEvents++;
+    });
 
     res.json({
-      eventId,
-      count: payments.length,
-      payments
+      summary: {
+        total_revenue: totalRevenue,
+        total_paid: totalPaid,
+        total_pending: totalRevenue - totalPaid,
+        pending_events_count: pendingEvents,
+        fully_paid_events_count: paidEvents,
+      }
     });
 
   } catch (err) {
-    console.error('Get payment details error:', err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
+};
+
+
+exports.getPayments = async (req, res) => {
+  const { eventId } = req.params;
+
+  try {
+      // Fetch all payments for the event
+      const payments = await new Promise((resolve, reject) => {
+        db.all(
+          'SELECT id, amount, method, payment_type as status, created_at as date FROM payments WHERE event_id = ? ORDER BY created_at ASC',
+          [eventId],
+          (err, rows) => (err ? reject(err) : resolve(rows))
+        );
+      });
+
+      // Fetch event total amount and advance from events table
+      const event = await new Promise((resolve, reject) => {
+        db.get('SELECT amount, advance FROM events WHERE id = ?', [eventId], (err, row) => (err ? reject(err) : resolve(row)));
+      });
+
+      const total = event ? parseFloat(event.amount) : 0;
+      const advance = event && event.advance ? parseFloat(event.advance) : 0;
+      // Sum of all payments made (excluding advance field)
+      const paidPayments = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+      // Total paid = advance (from event) + sum of payments
+      const paid = advance + paidPayments;
+      res.json({
+        payments,
+        summary: {
+          total_amount: total,
+          advance_amount: advance,
+          paid_amount: paid,
+          remaining_amount: total - paid
+        }
+      });
+    } catch (err) {
+      console.error('Error fetching payments:', err);
+      res.status(500).json({ error: 'Failed to fetch payment details' });
+    }
 };

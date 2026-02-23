@@ -156,6 +156,60 @@ db.exec(schema, (err) => {
       console.log('advance column ensured');
     }
   });
+
+  // Seed default email templates if table exists and is empty
+  db.get(`SELECT name FROM sqlite_master WHERE type='table' AND name='email_templates'`, (err, table) => {
+    if (err) {
+      console.error('Failed to check email_templates table:', err.message);
+      return;
+    }
+    if (!table) return;
+
+    db.get(`SELECT COUNT(*) AS count FROM email_templates`, (countErr, row) => {
+      if (countErr) {
+        console.error('Failed to count email_templates rows:', countErr.message);
+        return;
+      }
+      if (row && row.count === 0) {
+        const stmt = db.prepare(
+          `INSERT INTO email_templates (template_key, name, subject, html_body, hero_image_url, enabled)
+           VALUES (?, ?, ?, ?, ?, 1)`
+        );
+
+        stmt.run(
+          'BOOKING_CONFIRMATION',
+          'Booking Confirmation',
+          'Your session is confirmed!',
+          '<p>Hi {{clientName}},</p><p>Your {{eventType}} session on {{eventDate}} is confirmed.</p><p>You can set up your account using this link: <a href=\"{{link}}\">Access your session</a>.</p>',
+          null
+        );
+
+        stmt.run(
+          'PRE_SHOOT_REMINDER',
+          'Pre-Shoot Reminder',
+          'Getting ready for your shoot?',
+          '<p>Hi {{clientName}},</p><p>This is a friendly reminder about your upcoming {{eventType}} session on {{eventDate}}.</p>',
+          null
+        );
+
+        stmt.run(
+          'GALLERY_READY',
+          'Gallery Ready',
+          'Your photos are here!',
+          '<p>Hi {{clientName}},</p><p>Your gallery is now ready. You can view your photos using the link we sent earlier.</p>',
+          null
+        );
+
+        stmt.finalize((finalizeErr) => {
+          if (finalizeErr) {
+            console.error('Failed to seed email_templates:', finalizeErr.message);
+          } else {
+            console.log('Default email_templates seeded');
+          }
+        });
+      }
+    });
+  });
 });
 
 // Add this wrapper to support async/await and the .query() syntax

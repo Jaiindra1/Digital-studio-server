@@ -11,4 +11,7 @@ router.post('/record', paymentsController.record);
 //Get payment details
 router.get('/details/:eventId', paymentsController.getPayments);
 
+// Get payments overview
+router.get('/overview', paymentsController.getPaymentsOverview);
+
 module.exports = router;

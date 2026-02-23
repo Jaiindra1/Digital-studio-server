@@ -173,10 +173,12 @@ GET http://localhost:4000/api/public/media/album/29
 ###
 GET http://localhost:4000/api/payments/details/11
 ###
-GET http://localhost:4000/api/public/labels
+GET http://localhost:4000/api/client-auth/user/5
+### 
+GET http://localhost:4000/api/payments/details/7
+Authorization:  Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc3MTI0MjE5MiwiZXhwIjoxNzcxMjQ1NzkyfQ.zeb_3fZGFaVyjandPB-_OyFbYHaPHR5so6DExZyDyYE
+
 ###
-GET http://localhost:4000/api/public/gallery/1
-###
-GET http://localhost:4000/api/public/gallery/1
+GET http://localhost:4000/api/Cart/cart
 ###
 GET http://localhost:4000/api/public/gallery/1
