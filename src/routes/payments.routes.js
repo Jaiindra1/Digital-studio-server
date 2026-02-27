@@ -13,5 +13,7 @@ router.get('/details/:eventId', paymentsController.getPayments);
 
 // Get payments overview
 router.get('/overview', paymentsController.getPaymentsOverview);
+router.get('/pending', paymentsController.getPendingPayments);
+router.post('/pending/:eventId/remind', paymentsController.sendPendingPaymentReminder);
 
 module.exports = router;

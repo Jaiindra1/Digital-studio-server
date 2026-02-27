@@ -9,7 +9,10 @@ exports.getAll = (req, res) => {
 };
 
 // POST /api/staff
-exports.create = (req, res) => {
+const { signToken } = require('../utils/jwt');
+const { sendMail } = require('../utils/mail');
+
+exports.create = async (req, res) => {
   const { name, email, role, skills } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
 
@@ -18,9 +21,88 @@ exports.create = (req, res) => {
     VALUES (?, ?, ?, ?)
   `;
 
-  db.run(sql, [name, email, role, skills], function (err) {
+  db.run(sql, [name, email, role, skills], async function (err) {
     if (err) return res.status(500).json({ error: err.message });
-    res.status(201).json({ id: this.lastID, name, email, role, skills });
+    const staffId = this.lastID;
+
+    // Generate password setup token (valid for 24h)
+    let token;
+    try {
+      token = signToken({ staffId, email, type: 'staff-password-setup' }, '24h');
+    } catch (e) {
+      return res.status(500).json({ error: 'Failed to generate token' });
+    }
+
+    // Construct password setup link
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const link = `${baseUrl}/staff/set-password?token=${encodeURIComponent(token)}`;
+
+    // Send email
+    if (email) {
+      try {
+        await sendMail({
+          to: email,
+          subject: 'Set up your staff account password',
+          html: `<p>Hello ${name},</p>
+            <p>Your staff account has been created. Please <a href="${link}">click here to set your password</a> and activate your account.</p>
+            <p>If you did not expect this email, you can ignore it.</p>`
+        });
+      } catch (e) {
+        // Log error but do not fail creation
+        console.error('Failed to send staff setup email:', e);
+      }
+    }
+
+    res.status(201).json({ id: staffId, name, email, role, skills });
+  });
+};
+
+// POST /api/staff/:id/resend-password
+exports.resendPasswordSetupEmail = (req, res) => {
+  const { id } = req.params;
+
+  db.get(`SELECT id, name, email FROM staff WHERE id = ?`, [id], async (err, staff) => {
+    if (err) {
+      console.error('Failed to load staff for resend:', err);
+      return res.status(500).json({ error: 'Database error' });
+    }
+
+    if (!staff) {
+      return res.status(404).json({ error: 'Staff not found' });
+    }
+
+    if (!staff.email) {
+      return res.status(400).json({ error: 'Staff email is missing' });
+    }
+
+    let token;
+    try {
+      token = signToken(
+        { staffId: staff.id, email: staff.email, type: 'staff-password-setup' },
+        '24h'
+      );
+    } catch (e) {
+      console.error('Failed to generate staff setup token:', e);
+      return res.status(500).json({ error: 'Failed to generate token' });
+    }
+
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const link = `${baseUrl}/staff/set-password?token=${encodeURIComponent(token)}`;
+
+    try {
+      await sendMail({
+        to: staff.email,
+        subject: 'Set up your staff account password',
+        html: `<p>Hello ${staff.name},</p>
+          <p>You requested a new link to set your staff account password. Please <a href="${link}">click here to set your password</a>.</p>
+          <p>If you did not request this, you can safely ignore this email.</p>`
+      });
+    } catch (e) {
+      console.error('Failed to send staff setup email (resend):', e);
+      return res.status(500).json({ error: 'Failed to send email' });
+    }
+
+    return res.json({ message: 'Password setup email resent successfully' });
   });
 };
 
@@ -37,7 +119,6 @@ exports.update = (req, res) => {
   if (!name) {
     return res.status(400).json({ error: 'Name is required' });
   }
-  console.log('Updating staff with ID:', id, 'Data:', req.body);
   const sql = `
     UPDATE staff
     SET name = ?, email = ?, role = ?, skills = ? , updated_at = CURRENT_TIMESTAMP,

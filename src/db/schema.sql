@@ -16,7 +16,9 @@ CREATE TABLE IF NOT EXISTS staff (
     CHECK(status IN ('ACTIVE','INACTIVE','ON_LEAVE')),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   inactive_reason TEXT,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  password_hash TEXT,
+  is_account_active INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS clients (
@@ -113,4 +115,66 @@ CREATE TABLE IF NOT EXISTS password_tokens (
   used INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS staff_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  staff_id INTEGER NOT NULL,
+  device_name TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  is_current INTEGER NOT NULL DEFAULT 1,
+  last_active DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (staff_id) REFERENCES staff(id)
+);
+
+CREATE TABLE IF NOT EXISTS event_assets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL,
+  staff_id INTEGER NOT NULL,
+  type TEXT NOT NULL
+    CHECK(type IN ('IMAGE','VIDEO')),
+  title TEXT,
+  notes TEXT,
+  s3_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'DRAFT'
+    CHECK(status IN ('DRAFT','SUBMITTED','APPROVED','REJECTED')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (event_id) REFERENCES events(id),
+  FOREIGN KEY (staff_id) REFERENCES staff(id)
+);
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT,
+  staff_id INTEGER,
+  created_by INTEGER,
+  created_by_staff_id INTEGER,
+  status TEXT NOT NULL DEFAULT 'PENDING'
+    CHECK(status IN ('PENDING', 'COMPLETED')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME,
+  due_date DATE,
+  FOREIGN KEY (staff_id) REFERENCES staff(id),
+  FOREIGN KEY (created_by) REFERENCES users(id),
+  FOREIGN KEY (created_by_staff_id) REFERENCES staff(id)
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  staff_id INTEGER NOT NULL,
+  date DATE NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('present', 'absent', 'leave')),
+  request_status TEXT NOT NULL DEFAULT 'approved'
+    CHECK(request_status IN ('pending', 'approved', 'cancelled')),
+  notes TEXT,
+  reviewed_by INTEGER,
+  reviewed_at DATETIME,
+  review_notes TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (staff_id) REFERENCES staff(id),
+  FOREIGN KEY (reviewed_by) REFERENCES users(id)
 );

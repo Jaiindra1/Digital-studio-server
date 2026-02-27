@@ -44,22 +44,57 @@ exports.login = async (req, res) => {
         );
       });
 
-      // insert new session
-      await new Promise((resolve, reject) => {
-        db.run(
-          `INSERT INTO user_sessions
-           (user_id, device_name, ip_address, user_agent, is_current)
-           VALUES (?, ?, ?, ?, 1)`,
-          [user.id, deviceName, ipAddress, userAgent],
-          function(err) {
+      // check if a session already exists for this exact device fingerprint
+      const existing = await new Promise((resolve, reject) => {
+        db.get(
+          `SELECT id FROM user_sessions
+           WHERE user_id = ? AND device_name = ? AND user_agent = ? AND ip_address = ?`,
+          [user.id, deviceName, userAgent, ipAddress],
+          (err, row) => {
             if (err) {
-              console.error("Error inserting new session:", err);
+              console.error("Error checking existing session:", err);
               reject(err);
+            } else {
+              resolve(row);
             }
-            else resolve();
           }
         );
       });
+
+      if (existing) {
+        await new Promise((resolve, reject) => {
+          db.run(
+            `UPDATE user_sessions
+             SET is_current = 1, last_active = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [existing.id],
+            function(err) {
+              if (err) {
+                console.error("Error updating existing session:", err);
+                reject(err);
+              }
+              else resolve();
+            }
+          );
+        });
+      } else {
+        // insert new session only when not already present
+        await new Promise((resolve, reject) => {
+          db.run(
+            `INSERT INTO user_sessions
+             (user_id, device_name, ip_address, user_agent, is_current)
+             VALUES (?, ?, ?, ?, 1)`,
+            [user.id, deviceName, ipAddress, userAgent],
+            function(err) {
+              if (err) {
+                console.error("Error inserting new session:", err);
+                reject(err);
+              }
+              else resolve();
+            }
+          );
+        });
+      }
 
       /* ================= JWT ================= */
 

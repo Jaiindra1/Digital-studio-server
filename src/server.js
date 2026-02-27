@@ -35,6 +35,15 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} joined 'admins' room`);
   }
 
+  if (user && user.role === 'Staff') {
+    const staffId = user.id || user.sub;
+    if (staffId) {
+      const room = `staff:${staffId}`;
+      socket.join(room);
+      console.log(`Socket ${socket.id} joined '${room}' room`);
+    }
+  }
+
   socket.on('disconnect', () => {
     // Optionally handle disconnect cleanup
   });

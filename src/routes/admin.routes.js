@@ -37,11 +37,10 @@ function generateAvatarKey(adminId, filename) {
  * GET /api/admin/me
  */
 router.get("/me", authenticate, (req, res) => {
-  const adminId = req.user.sub;
   db.get(
     `SELECT id, email, role, full_name, phone, avatar_url, created_at, updated_at
-     FROM users WHERE id = ? AND role = 'Admin'`,
-    [adminId],
+     FROM users`,
+    
     async (err, row) => {
       if (err) return res.status(500).json({ error: "Database error" });
       if (!row) return res.status(404).json({ error: "Admin not found" });
@@ -76,7 +75,7 @@ router.get("/me", authenticate, (req, res) => {
  * PUT /api/admin/me
  */
 router.put("/me", authenticate, (req, res) => {
-  const adminId = req.user.sub;
+  const adminId = req.user.id || req.user.sub;
   const { fullName, phone } = req.body;
 
   db.run(
@@ -105,7 +104,7 @@ router.post(
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
-    const adminId = req.user.sub;
+    const adminId = req.user.id || req.user.sub;
     db.get(
       `SELECT avatar_url FROM users WHERE id = ?`,
       [adminId],
@@ -147,7 +146,7 @@ router.post(
  * DELETE /api/admin/avatar
  */
 router.delete("/avatar", authenticate, (req, res) => {
-  const adminId = req.user.sub;
+  const adminId = req.user.id || req.user.sub;
 
   db.get(
     `SELECT avatar_url FROM users WHERE id = ?`,
@@ -177,7 +176,7 @@ router.delete("/avatar", authenticate, (req, res) => {
  * PUT /api/admin/change-password
  */
 router.put("/change-password", authenticate, (req, res) => {
-  const adminId = req.user.sub;
+  const adminId = req.user.id || req.user.sub;
   const { currentPassword, newPassword } = req.body;
 
   db.get(
@@ -205,7 +204,7 @@ router.put("/change-password", authenticate, (req, res) => {
 /* ==================== SESSIONS ==================== */
 
 router.get('/sessions', authenticate, (req, res) => {
-  const adminId = req.user.sub;
+  const adminId = req.user.id || req.user.sub;
 
   db.all(
     `SELECT id, device_name, ip_address, user_agent, last_active, is_current
@@ -252,9 +251,10 @@ router.get('/sessions', authenticate, (req, res) => {
 });
 
 router.delete("/sessions/:id", authenticate, (req, res) => {
+  const adminId = req.user.id || req.user.sub;
   db.run(
     `DELETE FROM user_sessions WHERE id = ? AND user_id = ?`,
-    [req.params.id, req.user.sub],
+    [req.params.id, adminId],
     () => res.json({ success: true })
   );
 });
@@ -265,7 +265,7 @@ router.delete("/sessions/:id", authenticate, (req, res) => {
  * Update admin profile details (name, phone)
  */
 router.put('/me', authenticate, (req, res) => {
-  const adminId = req.user.sub;
+  const adminId = req.user.id || req.user.sub;
   const { fullName, phone } = req.body;
 
   // basic validation

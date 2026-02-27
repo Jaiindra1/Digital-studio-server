@@ -148,12 +148,72 @@ db.exec(schema, (err) => {
     }
   });
 
+  // Add password_hash and is_account_active columns to staff if not exists
+  db.run(`ALTER TABLE staff ADD COLUMN password_hash TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add password_hash column to staff:', err.message);
+    } else {
+      console.log('password_hash column to staff ensured');
+    }
+  });
+
+  db.run(`ALTER TABLE staff ADD COLUMN is_account_active INTEGER DEFAULT 0`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add is_account_active column to staff:', err.message);
+    } else {
+      console.log('is_account_active column to staff ensured');
+    }
+  });
+
   // Add advance column to events if not exists
   db.run(`ALTER TABLE events ADD COLUMN advance REAL DEFAULT 0`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {
       console.error('Failed to add advance column:', err.message);
     } else {
       console.log('advance column ensured');
+    }
+  });
+
+  // Add leave request workflow columns to attendance if not exists
+  db.run(`ALTER TABLE attendance ADD COLUMN request_status TEXT DEFAULT 'approved'`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add request_status column to attendance:', err.message);
+    } else {
+      console.log('request_status column to attendance ensured');
+      db.run(
+        `UPDATE attendance
+         SET request_status = 'approved'
+         WHERE request_status IS NULL OR TRIM(request_status) = ''`,
+        (updateErr) => {
+          if (updateErr) {
+            console.error('Failed to backfill request_status on attendance:', updateErr.message);
+          }
+        }
+      );
+    }
+  });
+
+  db.run(`ALTER TABLE attendance ADD COLUMN reviewed_by INTEGER`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add reviewed_by column to attendance:', err.message);
+    } else {
+      console.log('reviewed_by column to attendance ensured');
+    }
+  });
+
+  db.run(`ALTER TABLE attendance ADD COLUMN reviewed_at DATETIME`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add reviewed_at column to attendance:', err.message);
+    } else {
+      console.log('reviewed_at column to attendance ensured');
+    }
+  });
+
+  db.run(`ALTER TABLE attendance ADD COLUMN review_notes TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add review_notes column to attendance:', err.message);
+    } else {
+      console.log('review_notes column to attendance ensured');
     }
   });
 
@@ -209,6 +269,27 @@ db.exec(schema, (err) => {
         });
       }
     });
+  });
+
+  // Run V3 migration to alter tasks table
+  db.all(`PRAGMA table_info(tasks)`, (err, result) => {
+    if (err) {
+      console.error('Failed to get tasks table info:', err.message);
+      return;
+    }
+
+    const columnExists = result.some(col => col.name === 'created_by_staff_id');
+    if (!columnExists) {
+      const migrationPath = path.join(__dirname, '..', '..', 'db', 'V3__alter_tasks_table.sql');
+      const migrationSql = fs.readFileSync(migrationPath, 'utf8');
+      db.exec(migrationSql, (execErr) => {
+        if (execErr) {
+          console.error('Failed to run V3 migration:', execErr.message);
+        } else {
+          console.log('V3 migration ran successfully');
+        }
+      });
+    }
   });
 });
 
