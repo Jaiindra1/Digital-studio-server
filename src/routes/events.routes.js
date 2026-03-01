@@ -8,6 +8,7 @@ router.use(authenticate);
 
 // Assign staff to event
 router.get('/', controller.getAllEvents);
+router.get('/:eventId/media', controller.getEventMediaAdmin);
 router.post('/:eventId/assign-staff', controller.assignStaff);
 router.post('/:eventId/cancel', controller.cancelEvent);
 router.delete('/:eventId/staff/:staffId', controller.removeEventStaff);

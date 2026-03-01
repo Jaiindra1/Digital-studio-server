@@ -8,6 +8,17 @@ exports.getAll = (req, res) => {
   });
 };
 
+// GET /api/staff/me
+exports.getMe = (req, res) => {
+  const staffId = req.user.id;
+  if (!staffId) return res.status(401).json({ error: 'Unauthorized' });
+  db.get('SELECT * FROM staff WHERE id = ?', [staffId], (err, row) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    if (!row) return res.status(404).json({ error: 'Staff not found' });
+    res.json(row);
+  });
+};
+
 // POST /api/staff
 const { signToken } = require('../utils/jwt');
 const { sendMail } = require('../utils/mail');
@@ -136,6 +147,33 @@ exports.update = (req, res) => {
     }
 
     res.json({ message: 'Staff updated successfully' });
+  });
+};
+
+// PUT /api/staff/me
+exports.updateMe = (req, res) => {
+  const staffId = req.user.id;
+  if (!staffId) return res.status(401).json({ error: 'Unauthorized' });
+  if (!req.body) {
+    return res.status(400).json({ error: 'Request body missing' });
+  }
+  const { name, email, phone, role, skills, status } = req.body;
+  if (!name) {
+    return res.status(400).json({ error: 'Name is required' });
+  }
+  const sql = `
+    UPDATE staff
+    SET name = ?, email = ?, phone = ?, role = ?, skills = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `;
+  db.run(sql, [name, email, phone, role, skills, status, staffId], function (err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Staff not found' });
+    }
+    res.json({ message: 'Profile updated successfully' });
   });
 };
 

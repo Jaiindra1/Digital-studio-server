@@ -5,6 +5,7 @@ const express = require('express');
 const app = express();
 const albumRoutes = require("./routes/album.routes");
 const mediaRoutes = require("./routes/media.routes");
+const bookingRoutes = require("./routes/booking.routes");
 
 app.use(cors({
   origin: ['http://localhost:3000','http://localhost:3001', 'http://localhost:5173', 'https://digital-studio-chi.vercel.app'],
@@ -26,9 +27,13 @@ app.use("/api/albums", albumRoutes);
 app.use("/api/media", mediaRoutes);
 app.use('/api/cat', require('./routes/gallery.routes'));
 app.use('/api/studio', require('./routes/studio.routes.js'));
+app.use('/api/dashboard', require('./routes/dashboard.routes'));
 app.use('/api/attendance', require('./routes/attendance.routes'));
 app.use('/api/tasks', require('./routes/task'));
 app.use('/api/notifications', require('./routes/notifications.routes'));
 app.use('/api/email-templates', require('./routes/emailTemplates.routes'));
+
+// Add booking route
+app.use('/api/booking', bookingRoutes);
 
 module.exports = app;

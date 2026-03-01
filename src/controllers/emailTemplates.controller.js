@@ -254,7 +254,7 @@ exports.sendToClient = async (req, res) => {
       html,
     };
 
-    sendMailWithFallback(mailOptions, (err, info) => {
+    sendMailWithFallback(mailOptions, async (err, info) => {
       if (err) {
         console.error('Email template send error:', err);
         return res.status(500).json({ error: 'Failed to send email' });
@@ -265,10 +265,51 @@ exports.sendToClient = async (req, res) => {
         if (preview) console.log('Preview URL:', preview);
       } catch (e) {}
 
+      let updatedEventIds = [];
+      // When "Gallery Ready" is sent, mark current active client event(s) as delivered.
+      if (String(template.template_key || '').toUpperCase() === 'GALLERY_READY') {
+        try {
+          const candidateEvents = await new Promise((resolve, reject) => {
+            db.all(
+              `SELECT id
+               FROM events
+               WHERE client_id = ?
+                 AND status IN ('NEW', 'ASSIGNED', 'SHOOT_DONE')
+               ORDER BY event_date DESC, created_at DESC`,
+              [clientId],
+              (qErr, rows) => (qErr ? reject(qErr) : resolve(rows || []))
+            );
+          });
+
+          if (candidateEvents.length > 0) {
+            updatedEventIds = candidateEvents.map((row) => row.id);
+            const placeholders = updatedEventIds.map(() => '?').join(', ');
+
+            await new Promise((resolve, reject) => {
+              db.run(
+                `UPDATE events
+                 SET status = 'DELIVERED',
+                     Stage = 'DELIVERED',
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id IN (${placeholders})`,
+                updatedEventIds,
+                (uErr) => (uErr ? reject(uErr) : resolve())
+              );
+            });
+          }
+        } catch (statusErr) {
+          console.warn('Failed to auto-mark event as DELIVERED after gallery email:', statusErr.message || statusErr);
+        }
+      }
+
       return res.json({
-        message: 'Email sent successfully',
+        message:
+          updatedEventIds.length > 0
+            ? 'Email sent successfully and event marked as DELIVERED'
+            : 'Email sent successfully',
         clientId,
         templateId: id,
+        updatedEventIds,
       });
     });
   } catch (err) {

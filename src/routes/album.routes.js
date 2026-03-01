@@ -1,7 +1,10 @@
+
 const router = require("express").Router();
 const controller = require("../controllers/album.controller");
 const upload = require("../middleware/upload.middleware");
 const auth = require("../middleware/auth.middleware");
+// Get all albums (for analytics)
+router.get("/all", auth, controller.getAllAlbums);
 
 // CREATE ALBUM
 router.post("/", auth, controller.createAlbum);

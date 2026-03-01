@@ -178,3 +178,28 @@ CREATE TABLE IF NOT EXISTS attendance (
   FOREIGN KEY (staff_id) REFERENCES staff(id),
   FOREIGN KEY (reviewed_by) REFERENCES users(id)
 );
+
+CREATE TABLE IF NOT EXISTS studio_profile (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  studio_name TEXT NOT NULL,
+  description TEXT,
+  image_url TEXT,
+  address TEXT,
+  phone TEXT,
+  email TEXT,
+  website TEXT,
+  instagram TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  event_id INTEGER NOT NULL,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  comments TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (client_id) REFERENCES clients(id),
+  FOREIGN KEY (event_id) REFERENCES events(id)
+);

@@ -3,6 +3,11 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const emailTemplates = require('./emailTemplates.controller');
 const { getNotificationSettings } = require('./notifications.controller');
+const s3Client = require('../config/s3');
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+
+const BUCKET = process.env.S3_BUCKET_NAME;
 
 // Email transporter using Gmail (or other SMTP) from env
 const transporter = nodemailer.createTransport({
@@ -195,6 +200,57 @@ exports.getAllEvents = (req, res) => {
       res.json(Object.values(eventsMap));
 
   });
+};
+
+// Admin: fetch all event assets with signed URLs
+exports.getEventMediaAdmin = async (req, res) => {
+  const { eventId } = req.params;
+
+  if (!eventId) {
+    return res.status(400).json({ message: 'eventId is required' });
+  }
+
+  if (!BUCKET) {
+    return res.status(500).json({ message: 'S3 bucket is not configured' });
+  }
+
+  try {
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT ea.id, ea.event_id, ea.staff_id, ea.type, ea.title, ea.s3_key, ea.status, ea.created_at, s.name AS staff_name
+         FROM event_assets ea
+         LEFT JOIN staff s ON s.id = ea.staff_id
+         WHERE ea.event_id = ?
+         ORDER BY ea.created_at DESC`,
+        [eventId],
+        (err, data) => (err ? reject(err) : resolve(data || []))
+      );
+    });
+
+    const media = await Promise.all(
+      rows.map(async (row) => {
+        let signedUrl = null;
+        if (row.s3_key) {
+          try {
+            signedUrl = await getSignedUrl(
+              s3Client,
+              new GetObjectCommand({ Bucket: BUCKET, Key: row.s3_key }),
+              { expiresIn: 3600 }
+            );
+          } catch (err) {
+            console.warn('Failed to sign event media URL:', err.message);
+          }
+        }
+
+        return { ...row, signed_url: signedUrl };
+      })
+    );
+
+    res.json(media);
+  } catch (err) {
+    console.error('Failed to fetch event media (admin):', err);
+    res.status(500).json({ message: 'Failed to fetch event media' });
+  }
 };
 
   // 3. Update event amount and set amount_status to 1 (paid)

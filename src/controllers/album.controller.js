@@ -1,3 +1,41 @@
+// Get all albums (for analytics)
+exports.getAllAlbums = async (req, res) => {
+  try {
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `
+        SELECT
+          a.id,
+          a.name,
+          a.created_at,
+          a.label_id,
+          a.cover_key,
+          g.name AS label_name,
+          g.category AS category,
+          COUNT(DISTINCT m.id) AS media_count,
+          (
+            SELECT s3_url
+            FROM gallery_media
+            WHERE s3_url= a.cover_key 
+            ORDER BY created_at ASC
+            LIMIT 1
+          ) AS cover_image
+        FROM albums a
+        JOIN gallery g ON g.id = a.label_id
+        LEFT JOIN gallery_media m ON m.album_id = a.id
+        GROUP BY a.id, a.name, a.created_at, a.label_id, a.cover_key, g.name, g.category
+        ORDER BY a.created_at DESC
+        `,
+        [],
+        (err, rows) => (err ? reject(err) : resolve(rows))
+      );
+    });
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching all albums:', err);
+    res.status(500).json({ error: 'Failed to fetch albums' });
+  }
+};
 require("dotenv").config();
 const fs = require("fs");
 const db = require("../db/db");

@@ -7,6 +7,12 @@ const router = express.Router();
 
 router.get('/', authenticateStaff, controller.getAll);
 
+// Get current staff profile
+router.get('/me', authenticateStaff, controller.getMe);
+
+// Allow staff to update their own profile
+router.put('/me', authenticateStaff, controller.updateMe);
+
 router.use(authenticate); // Admin-only
 
 router.post('/', controller.create);

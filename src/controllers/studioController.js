@@ -5,6 +5,18 @@ const { PutObjectCommand , GetObjectCommand ,DeleteObjectCommand } = require("@a
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const BUCKET = process.env.S3_BUCKET_NAME;
 
+// Promise helpers for sqlite
+const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
+  db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+});
+
+const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
+  db.run(sql, params, function (err) {
+    if (err) return reject(err);
+    resolve(this);
+  });
+});
+
 exports.createStudioProfile = async (req, res) => {
   try {
     const {
@@ -38,29 +50,27 @@ exports.createStudioProfile = async (req, res) => {
       await s3Client.send(new PutObjectCommand(uploadParams));
     }
 
-    const query = `
-      INSERT INTO studio_profile
-      (studio_name, description, image_url, address, phone, email, website, instagram)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      RETURNING *;
-    `;
+    await dbRun(
+      `INSERT OR REPLACE INTO studio_profile
+       (id, studio_name, description, image_url, address, phone, email, website, instagram, created_at, updated_at)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      [
+        studio_name,
+        description || null,
+        image_key,
+        address || null,
+        phone || null,
+        email || null,
+        website || null,
+        instagram || null
+      ]
+    );
 
-    const values = [
-      studio_name,
-      description || null,
-      image_key, // store KEY only
-      address || null,
-      phone || null,
-      email || null,
-      website || null,
-      instagram || null
-    ];
-
-    const { rows } = await db.query(query, values);
+    const saved = await dbGet(`SELECT * FROM studio_profile WHERE id = 1`);
 
     return res.status(201).json({
       message: "Studio profile created successfully",
-      data: rows[0]
+      data: saved
     });
 
   } catch (error) {
@@ -72,16 +82,11 @@ exports.createStudioProfile = async (req, res) => {
 exports.getStudioProfileById = async (req, res) => {
   try {
 
-    const result = await db.query(
-      "SELECT * FROM studio_profile WHERE id = 1"
-      
-    );
+    const studio = await dbGet("SELECT * FROM studio_profile WHERE id = 1");
 
-    if (result.rows.length === 0) {
+    if (!studio) {
       return res.status(404).json({ message: "Studio not found" });
     }
-
-    const studio = result.rows[0];
 
     // Generate signed URL if image exists
     if (studio.image_url) {
@@ -116,17 +121,13 @@ exports.updateStudioProfile = async (req, res) => {
     } = req.body;
 
     // Fetch existing studio (singleton)
-    const existingResult = await db.query(
-      "SELECT * FROM studio_profile WHERE id = 1"
-    );
+    const existingStudio = await dbGet("SELECT * FROM studio_profile WHERE id = 1");
 
-    if (existingResult.rows.length === 0) {
+    if (!existingStudio) {
       return res.status(404).json({
         message: "Studio profile not found. Create it first."
       });
     }
-
-    const existingStudio = existingResult.rows[0];
 
     let newImageKey = existingStudio.image_url;
 
@@ -156,39 +157,36 @@ exports.updateStudioProfile = async (req, res) => {
       }
     }
 
-        const updateQuery = `
-      UPDATE studio_profile
-      SET
-        studio_name = COALESCE($1, studio_name),
-        description = COALESCE($2, description),
-          image_url = $3,
-          address = COALESCE($4, address),
-          phone = COALESCE($5, phone),
-          email = COALESCE($6, email),
-          website = COALESCE($7, website),
-          instagram = COALESCE($8, instagram),
-          updated_at = CURRENT_TIMESTAMP
-        WHERE id = 1
-        RETURNING *;
-      `;
+    await dbRun(
+      `UPDATE studio_profile
+       SET
+         studio_name = COALESCE(?, studio_name),
+         description = COALESCE(?, description),
+         image_url = ?,
+         address = COALESCE(?, address),
+         phone = COALESCE(?, phone),
+         email = COALESCE(?, email),
+         website = COALESCE(?, website),
+         instagram = COALESCE(?, instagram),
+         updated_at = CURRENT_TIMESTAMP
+       WHERE id = 1`,
+      [
+        studio_name,
+        description,
+        newImageKey,
+        address,
+        phone,
+        email,
+        website,
+        instagram,
+      ]
+    );
 
-
-    const values = [
-      studio_name,
-      description,
-      newImageKey,
-      address,
-      phone,
-      email,
-      website,
-      instagram,
-    ];
-
-    const { rows } = await db.query(updateQuery, values);
+    const updated = await dbGet(`SELECT * FROM studio_profile WHERE id = 1`);
 
     return res.status(200).json({
       message: "Studio profile updated successfully",
-      data: rows[0],
+      data: updated,
     });
 
   } catch (error) {
