@@ -10,8 +10,10 @@ CREATE TABLE IF NOT EXISTS staff (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   email TEXT UNIQUE,
+  phone TEXT,
   role TEXT,
   skills TEXT,
+  avatar_url TEXT,
   status TEXT NOT NULL DEFAULT 'ACTIVE'
     CHECK(status IN ('ACTIVE','INACTIVE','ON_LEAVE')),
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -202,4 +204,58 @@ CREATE TABLE IF NOT EXISTS feedback (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (client_id) REFERENCES clients(id),
   FOREIGN KEY (event_id) REFERENCES events(id)
+);
+
+CREATE TABLE IF NOT EXISTS client_cart (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active'
+    CHECK(status IN ('active', 'checked_out')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (client_id) REFERENCES clients(id)
+);
+
+CREATE TABLE IF NOT EXISTS client_cart_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  cart_id INTEGER NOT NULL,
+  product_id INTEGER,
+  product_name TEXT,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  price REAL NOT NULL DEFAULT 0,
+  image_url TEXT,
+  uploaded_image_data TEXT,
+  frame_details TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (cart_id) REFERENCES client_cart(id)
+);
+
+CREATE TABLE IF NOT EXISTS client_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL,
+  cart_id INTEGER NOT NULL,
+  total REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'placed'
+    CHECK(status IN ('placed', 'processing', 'completed', 'cancelled')),
+  payment_status TEXT NOT NULL DEFAULT 'unpaid'
+    CHECK(payment_status IN ('unpaid', 'partial', 'paid')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (client_id) REFERENCES clients(id),
+  FOREIGN KEY (cart_id) REFERENCES client_cart(id)
+);
+
+CREATE TABLE IF NOT EXISTS client_order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL,
+  product_id INTEGER,
+  product_name TEXT,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  price REAL NOT NULL DEFAULT 0,
+  image_url TEXT,
+  uploaded_image_data TEXT,
+  frame_details TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (order_id) REFERENCES client_orders(id)
 );

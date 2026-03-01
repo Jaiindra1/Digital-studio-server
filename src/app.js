@@ -11,7 +11,7 @@ app.use(cors({
   origin: ['http://localhost:3000','http://localhost:3001', 'http://localhost:5173', 'https://digital-studio-chi.vercel.app'],
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use('/api/auth', require('./routes/auth.routes'));

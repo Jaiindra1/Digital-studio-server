@@ -7,6 +7,7 @@ const s3Client = require('../config/s3');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const archiver = require('archiver');
+const { sendMail } = require('../utils/mail');
 
 const BUCKET = process.env.S3_BUCKET_NAME;
 
@@ -327,6 +328,666 @@ exports.getById = (req, res) => {
 
     res.json(Object.values(eventsMap));
   });
+};
+
+exports.getClientProfile = (req, res) => {
+  const { id } = req.params;
+
+  db.get(
+    `SELECT id, name, phone, email, address, notes, created_at, updated_at
+     FROM clients
+     WHERE id = ?`,
+    [id],
+    (err, row) => {
+      if (err) {
+        console.error('Get client profile error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+      }
+
+      if (!row) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      return res.json(row);
+    }
+  );
+};
+
+exports.updateClientProfile = (req, res) => {
+  const { id } = req.params;
+  const {
+    name = '',
+    phone = '',
+    email = '',
+    address = '',
+    notes = ''
+  } = req.body || {};
+
+  const normalizedName = String(name).trim();
+  const normalizedPhone = String(phone).trim();
+  const normalizedEmail = email == null ? null : String(email).trim();
+  const normalizedAddress = address == null ? null : String(address).trim();
+  const normalizedNotes = notes == null ? null : String(notes).trim();
+
+  if (!normalizedName) {
+    return res.status(400).json({ message: 'Name is required' });
+  }
+
+  if (!normalizedPhone) {
+    return res.status(400).json({ message: 'Phone is required' });
+  }
+
+  db.run(
+    `UPDATE clients
+     SET name = ?,
+         phone = ?,
+         email = ?,
+         address = ?,
+         notes = ?,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [
+      normalizedName,
+      normalizedPhone,
+      normalizedEmail || null,
+      normalizedAddress || null,
+      normalizedNotes || null,
+      id
+    ],
+    function (err) {
+      if (err) {
+        console.error('Update client profile error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+      }
+
+      if (!this.changes) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      db.get(
+        `SELECT id, name, phone, email, address, notes, created_at, updated_at
+         FROM clients
+         WHERE id = ?`,
+        [id],
+        (fetchErr, row) => {
+          if (fetchErr) {
+            console.error('Fetch updated client profile error:', fetchErr);
+            return res.status(500).json({ message: 'Profile updated but fetch failed' });
+          }
+
+          return res.json(row);
+        }
+      );
+    }
+  );
+};
+
+const getOrCreateClientCartId = (clientId) => new Promise((resolve, reject) => {
+  db.get(
+    `SELECT id FROM client_cart WHERE client_id = ? AND status = 'active'`,
+    [clientId],
+    (findErr, cartRow) => {
+      if (findErr) return reject(findErr);
+      if (cartRow?.id) return resolve(cartRow.id);
+
+      db.run(
+        `INSERT INTO client_cart (client_id, status) VALUES (?, 'active')`,
+        [clientId],
+        function (insertErr) {
+          if (insertErr) return reject(insertErr);
+          return resolve(this.lastID);
+        }
+      );
+    }
+  );
+});
+
+exports.addClientCartItem = async (req, res) => {
+  const { id } = req.params;
+  const {
+    product_id,
+    product_name,
+    quantity,
+    price,
+    image_url,
+    uploaded_image_data,
+    frame_details
+  } = req.body || {};
+
+  const clientId = Number(id);
+  const normalizedQty = Number(quantity || 0);
+  const normalizedPrice = Number(price || 0);
+
+  if (!clientId || Number.isNaN(clientId)) {
+    return res.status(400).json({ message: 'Invalid client id' });
+  }
+
+  if (!normalizedQty || normalizedQty < 1) {
+    return res.status(400).json({ message: 'Quantity must be at least 1' });
+  }
+
+  if (Number.isNaN(normalizedPrice) || normalizedPrice < 0) {
+    return res.status(400).json({ message: 'Invalid price' });
+  }
+
+  try {
+    const client = await new Promise((resolve, reject) => {
+      db.get(`SELECT id FROM clients WHERE id = ?`, [clientId], (err, row) => {
+        if (err) return reject(err);
+        return resolve(row);
+      });
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const cartId = await getOrCreateClientCartId(clientId);
+    const serializedFrameDetails =
+      frame_details == null
+        ? null
+        : (typeof frame_details === 'string' ? frame_details : JSON.stringify(frame_details));
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO client_cart_items (
+            cart_id,
+            product_id,
+            product_name,
+            quantity,
+            price,
+            image_url,
+            uploaded_image_data,
+            frame_details
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          cartId,
+          product_id || null,
+          product_name || null,
+          normalizedQty,
+          normalizedPrice,
+          image_url || null,
+          uploaded_image_data || null,
+          serializedFrameDetails
+        ],
+        (insertErr) => {
+          if (insertErr) return reject(insertErr);
+          return resolve();
+        }
+      );
+    });
+
+    const countRow = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COALESCE(SUM(quantity), 0) AS count FROM client_cart_items WHERE cart_id = ?`,
+        [cartId],
+        (countErr, row) => {
+          if (countErr) return reject(countErr);
+          return resolve(row || { count: 0 });
+        }
+      );
+    });
+
+    res.json({
+      message: 'Item added to cart',
+      count: Number(countRow.count || 0)
+    });
+  } catch (err) {
+    console.error('Add client cart item failed:', err);
+    res.status(500).json({ message: 'Failed to add item to cart' });
+  }
+};
+
+exports.getClientCart = async (req, res) => {
+  const { id } = req.params;
+  const clientId = Number(id);
+
+  if (!clientId || Number.isNaN(clientId)) {
+    return res.status(400).json({ message: 'Invalid client id' });
+  }
+
+  try {
+    const cart = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id FROM client_cart WHERE client_id = ? AND status = 'active'`,
+        [clientId],
+        (err, row) => {
+          if (err) return reject(err);
+          return resolve(row);
+        }
+      );
+    });
+
+    if (!cart) {
+      return res.json({ items: [], total: 0, count: 0 });
+    }
+
+    const items = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, cart_id, product_id, product_name, quantity, price, image_url, uploaded_image_data, frame_details, created_at
+         FROM client_cart_items
+         WHERE cart_id = ?
+         ORDER BY created_at DESC`,
+        [cart.id],
+        (err, rows) => {
+          if (err) return reject(err);
+          return resolve(rows || []);
+        }
+      );
+    });
+
+    const total = items.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0), 0);
+    const count = items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+    res.json({ items, total, count });
+  } catch (err) {
+    console.error('Get client cart failed:', err);
+    res.status(500).json({ message: 'Failed to fetch cart' });
+  }
+};
+
+exports.getClientCartCount = async (req, res) => {
+  const { id } = req.params;
+  const clientId = Number(id);
+
+  if (!clientId || Number.isNaN(clientId)) {
+    return res.status(400).json({ message: 'Invalid client id' });
+  }
+
+  try {
+    const cart = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id FROM client_cart WHERE client_id = ? AND status = 'active'`,
+        [clientId],
+        (err, row) => {
+          if (err) return reject(err);
+          return resolve(row);
+        }
+      );
+    });
+
+    if (!cart) {
+      return res.json({ count: 0 });
+    }
+
+    const row = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COALESCE(SUM(quantity), 0) AS count FROM client_cart_items WHERE cart_id = ?`,
+        [cart.id],
+        (err, result) => {
+          if (err) return reject(err);
+          return resolve(result || { count: 0 });
+        }
+      );
+    });
+
+    res.json({ count: Number(row.count || 0) });
+  } catch (err) {
+    console.error('Get client cart count failed:', err);
+    res.status(500).json({ message: 'Failed to fetch cart count' });
+  }
+};
+
+exports.removeClientCartItem = async (req, res) => {
+  const { id, itemId } = req.params;
+  const clientId = Number(id);
+  const cartItemId = Number(itemId);
+
+  if (!clientId || Number.isNaN(clientId) || !cartItemId || Number.isNaN(cartItemId)) {
+    return res.status(400).json({ message: 'Invalid client id or item id' });
+  }
+
+  try {
+    const cart = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id FROM client_cart WHERE client_id = ? AND status = 'active'`,
+        [clientId],
+        (err, row) => {
+          if (err) return reject(err);
+          return resolve(row);
+        }
+      );
+    });
+
+    if (!cart) {
+      return res.status(404).json({ message: 'Active cart not found' });
+    }
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `DELETE FROM client_cart_items WHERE id = ? AND cart_id = ?`,
+        [cartItemId, cart.id],
+        function (err) {
+          if (err) return reject(err);
+          if (!this.changes) return reject(new Error('NOT_FOUND'));
+          return resolve();
+        }
+      );
+    });
+
+    const row = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COALESCE(SUM(quantity), 0) AS count FROM client_cart_items WHERE cart_id = ?`,
+        [cart.id],
+        (err, result) => {
+          if (err) return reject(err);
+          return resolve(result || { count: 0 });
+        }
+      );
+    });
+
+    res.json({ message: 'Item removed', count: Number(row.count || 0) });
+  } catch (err) {
+    if (err.message === 'NOT_FOUND') {
+      return res.status(404).json({ message: 'Cart item not found' });
+    }
+    console.error('Remove client cart item failed:', err);
+    res.status(500).json({ message: 'Failed to remove cart item' });
+  }
+};
+
+exports.updateClientCartItemQuantity = async (req, res) => {
+  const { id, itemId } = req.params;
+  const { quantity } = req.body || {};
+  const clientId = Number(id);
+  const cartItemId = Number(itemId);
+  const normalizedQty = Number(quantity || 0);
+
+  if (!clientId || Number.isNaN(clientId) || !cartItemId || Number.isNaN(cartItemId)) {
+    return res.status(400).json({ message: 'Invalid client id or item id' });
+  }
+
+  if (!normalizedQty || normalizedQty < 1) {
+    return res.status(400).json({ message: 'Quantity must be at least 1' });
+  }
+
+  try {
+    const cart = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id FROM client_cart WHERE client_id = ? AND status = 'active'`,
+        [clientId],
+        (err, row) => (err ? reject(err) : resolve(row))
+      );
+    });
+
+    if (!cart) {
+      return res.status(404).json({ message: 'Active cart not found' });
+    }
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE client_cart_items
+         SET quantity = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND cart_id = ?`,
+        [normalizedQty, cartItemId, cart.id],
+        function (err) {
+          if (err) return reject(err);
+          if (!this.changes) return reject(new Error('NOT_FOUND'));
+          return resolve();
+        }
+      );
+    });
+
+    const row = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT COALESCE(SUM(quantity), 0) AS count FROM client_cart_items WHERE cart_id = ?`,
+        [cart.id],
+        (err, result) => (err ? reject(err) : resolve(result || { count: 0 }))
+      );
+    });
+
+    res.json({ message: 'Quantity updated', count: Number(row.count || 0) });
+  } catch (err) {
+    if (err.message === 'NOT_FOUND') {
+      return res.status(404).json({ message: 'Cart item not found' });
+    }
+    console.error('Update client cart item quantity failed:', err);
+    return res.status(500).json({ message: 'Failed to update quantity' });
+  }
+};
+
+exports.checkoutClientCart = async (req, res) => {
+  const { id } = req.params;
+  const clientId = Number(id);
+
+  if (!clientId || Number.isNaN(clientId)) {
+    return res.status(400).json({ message: 'Invalid client id' });
+  }
+
+  try {
+    const client = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id, name, email, phone FROM clients WHERE id = ?`,
+        [clientId],
+        (err, row) => (err ? reject(err) : resolve(row))
+      );
+    });
+
+    if (!client) {
+      return res.status(404).json({ message: 'Client not found' });
+    }
+
+    const cart = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id FROM client_cart WHERE client_id = ? AND status = 'active'`,
+        [clientId],
+        (err, row) => (err ? reject(err) : resolve(row))
+      );
+    });
+
+    if (!cart) {
+      return res.status(400).json({ message: 'Cart is empty' });
+    }
+
+    const items = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT id, product_id, product_name, quantity, price, image_url, uploaded_image_data, frame_details
+         FROM client_cart_items
+         WHERE cart_id = ?`,
+        [cart.id],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+
+    if (!items.length) {
+      return res.status(400).json({ message: 'Cart is empty' });
+    }
+
+    const total = items.reduce(
+      (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+      0
+    );
+
+    const orderId = await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO client_orders (client_id, cart_id, total, status, payment_status)
+         VALUES (?, ?, ?, 'placed', 'unpaid')`,
+        [clientId, cart.id, total],
+        function (err) {
+          if (err) return reject(err);
+          return resolve(this.lastID);
+        }
+      );
+    });
+
+    await new Promise((resolve, reject) => {
+      const stmt = db.prepare(
+        `INSERT INTO client_order_items (
+           order_id, product_id, product_name, quantity, price, image_url, uploaded_image_data, frame_details
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+
+      for (const item of items) {
+        stmt.run(
+          orderId,
+          item.product_id || null,
+          item.product_name || null,
+          Number(item.quantity || 0),
+          Number(item.price || 0),
+          item.image_url || null,
+          item.uploaded_image_data || null,
+          item.frame_details || null
+        );
+      }
+
+      stmt.finalize((err) => (err ? reject(err) : resolve()));
+    });
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE client_cart
+         SET status = 'checked_out', updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [cart.id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    const notificationPayload = {
+      orderId,
+      clientId,
+      clientName: client.name || 'Client',
+      clientEmail: client.email || null,
+      clientPhone: client.phone || null,
+      itemCount: items.length,
+      total,
+      placedAt: new Date().toISOString()
+    };
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`,
+        ['CLIENT_ORDER_PLACED', JSON.stringify(notificationPayload), null],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to('admins').emit('clientOrderPlaced', notificationPayload);
+    }
+
+    const adminRows = await new Promise((resolve, reject) => {
+      db.all(
+        `SELECT email FROM users WHERE role = 'admin' AND email IS NOT NULL AND TRIM(email) <> ''`,
+        [],
+        (err, rows) => (err ? reject(err) : resolve(rows || []))
+      );
+    });
+
+    const adminEmails = [...new Set((adminRows || []).map((row) => row.email).filter(Boolean))];
+    if (process.env.ADMIN_EMAIL && !adminEmails.includes(process.env.ADMIN_EMAIL)) {
+      adminEmails.push(process.env.ADMIN_EMAIL);
+    }
+
+    if (adminEmails.length) {
+      const subject = `New Client Order #${orderId}`;
+      const html = `
+        <p>A new client order has been placed.</p>
+        <p><strong>Order ID:</strong> ${orderId}</p>
+        <p><strong>Client:</strong> ${client.name || '-'} (ID: ${clientId})</p>
+        <p><strong>Email:</strong> ${client.email || '-'}</p>
+        <p><strong>Phone:</strong> ${client.phone || '-'}</p>
+        <p><strong>Items:</strong> ${items.length}</p>
+        <p><strong>Total:</strong> ₹${Number(total).toFixed(2)}</p>
+      `;
+
+      await Promise.all(
+        adminEmails.map((to) =>
+          sendMail({ to, subject, html }).catch((mailErr) => {
+            console.warn(`Failed to send order email to ${to}:`, mailErr.message || mailErr);
+          })
+        )
+      );
+    }
+
+    return res.json({
+      message: 'Order placed successfully',
+      orderId,
+      total,
+      itemCount: items.length
+    });
+  } catch (err) {
+    console.error('Checkout client cart failed:', err);
+    return res.status(500).json({ message: 'Failed to checkout cart' });
+  }
+};
+
+// Get client order history (self-service)
+exports.getClientOrders = async (req, res) => {
+  const { id } = req.params;
+  const clientId = Number(id);
+
+  if (!clientId || Number.isNaN(clientId)) {
+    return res.status(400).json({ message: 'Invalid client id' });
+  }
+
+  try {
+    const rows = await new Promise((resolve, reject) => {
+      db.all(
+        `
+        SELECT
+          o.id AS order_id,
+          o.total,
+          o.status,
+          o.payment_status,
+          o.created_at,
+          o.updated_at,
+          i.id AS item_id,
+          i.product_id,
+          i.product_name,
+          i.quantity,
+          i.price,
+          i.image_url,
+          i.uploaded_image_data,
+          i.frame_details,
+          i.created_at AS item_created_at
+        FROM client_orders o
+        LEFT JOIN client_order_items i ON i.order_id = o.id
+        WHERE o.client_id = ?
+        ORDER BY o.created_at DESC, i.created_at DESC
+        `,
+        [clientId],
+        (err, data) => (err ? reject(err) : resolve(data || []))
+      );
+    });
+
+    const ordersMap = {};
+
+    rows.forEach((row) => {
+      const orderId = row.order_id;
+      if (!ordersMap[orderId]) {
+        ordersMap[orderId] = {
+          id: orderId,
+          total: Number(row.total || 0),
+          status: row.status || 'placed',
+          payment_status: row.payment_status || 'unpaid',
+          created_at: row.created_at,
+          updated_at: row.updated_at,
+          items: []
+        };
+      }
+
+      if (row.item_id) {
+        ordersMap[orderId].items.push({
+          id: row.item_id,
+          product_id: row.product_id,
+          product_name: row.product_name,
+          quantity: Number(row.quantity || 0),
+          price: Number(row.price || 0),
+          image_url: row.image_url,
+          uploaded_image_data: row.uploaded_image_data,
+          frame_details: row.frame_details,
+          created_at: row.item_created_at
+        });
+      }
+    });
+
+    res.json({ orders: Object.values(ordersMap) });
+  } catch (err) {
+    console.error('Failed to fetch client orders:', err);
+    res.status(500).json({ message: 'Failed to fetch orders' });
+  }
 };
 
 // Get media for a specific event (client-facing, verifies event ownership)

@@ -1,4 +1,9 @@
 const db = require('../db/db');
+const s3Client = require('../config/s3');
+const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+
+const BUCKET = process.env.S3_BUCKET_NAME;
 
 // GET /api/staff
 exports.getAll = (req, res) => {
@@ -12,10 +17,26 @@ exports.getAll = (req, res) => {
 exports.getMe = (req, res) => {
   const staffId = req.user.id;
   if (!staffId) return res.status(401).json({ error: 'Unauthorized' });
-  db.get('SELECT * FROM staff WHERE id = ?', [staffId], (err, row) => {
+  db.get('SELECT * FROM staff WHERE id = ?', [staffId], async (err, row) => {
     if (err) return res.status(500).json({ error: 'Database error' });
     if (!row) return res.status(404).json({ error: 'Staff not found' });
-    res.json(row);
+
+    let avatarUrl = null;
+    if (row.avatar_url && BUCKET) {
+      try {
+        avatarUrl = await getSignedUrl(
+          s3Client,
+          new GetObjectCommand({ Bucket: BUCKET, Key: row.avatar_url }),
+          { expiresIn: 3600 }
+        );
+      } catch (e) {
+        console.error('Failed to sign staff avatar URL:', e);
+      }
+    } else if (row.avatar_url) {
+      avatarUrl = row.avatar_url;
+    }
+
+    res.json({ ...row, avatarUrl });
   });
 };
 

@@ -165,6 +165,24 @@ db.exec(schema, (err) => {
     }
   });
 
+  // Add phone column to staff if not exists
+  db.run(`ALTER TABLE staff ADD COLUMN phone TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add phone column to staff:', err.message);
+    } else {
+      console.log('phone column to staff ensured');
+    }
+  });
+
+  // Add avatar_url column to staff if not exists
+  db.run(`ALTER TABLE staff ADD COLUMN avatar_url TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.error('Failed to add avatar_url column to staff:', err.message);
+    } else {
+      console.log('avatar_url column to staff ensured');
+    }
+  });
+
   // Add advance column to events if not exists
   db.run(`ALTER TABLE events ADD COLUMN advance REAL DEFAULT 0`, (err) => {
     if (err && !err.message.includes('duplicate column name')) {
