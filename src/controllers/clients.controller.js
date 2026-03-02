@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 
 // GET /api/clients
 exports.getAll = (req, res) => {

@@ -9,10 +9,10 @@ curl -X POST http://localhost:4000/api/auth/login \
 curl -X GET http://localhost:4000/health
 ###
 curl -X GET http://localhost:4000/api/admin/me
--H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzA3Mzc0NCwiZXhwIjoxNzY3MDc3MzQ0fQ.jILOgfCzQjxOSeZvO5ocS3pOwslkB-anVSEipBEtNgY"
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc3MjQzOTEzNywiZXhwIjoxNzcyNDQyNzM3fQ.eHCThB5UsmZtUgYscPGn6P3rqkABN4IqkKb_SVI3j-E"
 ###
 curl -X POST http://localhost:4000/api/staff
--H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzA3NTE3MCwiZXhwIjoxNzY3MDc4NzcwfQ.1tYEL0yLqBtvB-VMSlvpwB5rex_zhd7ycX6VO-O_044"
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc3MjQzOTEzNywiZXhwIjoxNzcyNDQyNzM3fQ.eHCThB5UsmZtUgYscPGn6P3rqkABN4IqkKb_SVI3j-E"
 -H "Content-Type: application/json"
 -d
 '{

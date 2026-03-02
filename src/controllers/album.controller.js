@@ -38,7 +38,7 @@ exports.getAllAlbums = async (req, res) => {
 };
 require("dotenv").config();
 const fs = require("fs");
-const db = require("../db/db");
+const db = require("../config/db");
 const s3Client = require("../config/s3");
 const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand, DeleteObjectsCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");

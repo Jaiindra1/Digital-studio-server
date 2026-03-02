@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 const { uploadProductImage } = require('../services/s3Upload');
 const { GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");

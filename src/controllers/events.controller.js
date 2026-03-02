@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const emailTemplates = require('./emailTemplates.controller');

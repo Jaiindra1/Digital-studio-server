@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const db = require('../db/db');
+const db = require('../config/db');
 const { hash, compare } = require('../utils/password');
 const s3Client = require('../config/s3');
 const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');

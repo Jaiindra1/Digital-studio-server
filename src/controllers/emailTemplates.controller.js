@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 const nodemailer = require('nodemailer');
 
 // Email transporter using SMTP config from environment
@@ -13,6 +13,8 @@ const transporter = nodemailer.createTransport({
       }
     : undefined,
 });
+
+let reminderSchemaEnsured = false;
 
 // Helper to send mail; falls back to console logging when EMAIL not configured (dev mode)
 function sendMailWithFallback(mailOptions, cb) {
@@ -29,6 +31,203 @@ function sendMailWithFallback(mailOptions, cb) {
     console.log('Link in email:', linkMatch[1]);
   }
   cb(null, { messageId: 'dev-' + Date.now() });
+}
+
+function applyVars(text, vars) {
+  return (text || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (_m, key) =>
+    vars[key] != null ? String(vars[key]) : ''
+  );
+}
+
+function eventDateTimeFromRow(row) {
+  let datePart = null;
+  if (row.event_date instanceof Date) {
+    const y = row.event_date.getFullYear();
+    const m = String(row.event_date.getMonth() + 1).padStart(2, '0');
+    const d = String(row.event_date.getDate()).padStart(2, '0');
+    datePart = `${y}-${m}-${d}`;
+  } else if (row.event_date) {
+    datePart = String(row.event_date).slice(0, 10);
+  }
+  const timePart = row.start_time ? String(row.start_time).slice(0, 8) : '10:00:00';
+  if (!datePart) return null;
+  return new Date(`${datePart}T${timePart}`);
+}
+
+function formatEventDate(row) {
+  if (row.event_date instanceof Date) {
+    return row.event_date.toLocaleDateString();
+  }
+  if (!row.event_date) return '';
+  const parsed = new Date(String(row.event_date));
+  if (Number.isNaN(parsed.getTime())) return String(row.event_date).slice(0, 10);
+  return parsed.toLocaleDateString();
+}
+
+function sendMailAsync(mailOptions) {
+  return new Promise((resolve, reject) => {
+    sendMailWithFallback(mailOptions, (err, info) => {
+      if (err) return reject(err);
+      resolve(info);
+    });
+  });
+}
+
+async function ensureReminderSchema() {
+  if (reminderSchemaEnsured) return;
+  try {
+    await new Promise((resolve, reject) => {
+      db.run(
+        `ALTER TABLE events ADD COLUMN reminder_sent_at DATETIME NULL`,
+        [],
+        (err) => {
+          if (!err) return resolve();
+          const msg = String(err.message || '').toLowerCase();
+          if (
+            msg.includes('duplicate column') ||
+            msg.includes('already exists')
+          ) {
+            return resolve();
+          }
+          return reject(err);
+        }
+      );
+    });
+    reminderSchemaEnsured = true;
+  } catch (err) {
+    console.error('Failed to ensure reminder schema:', err.message || err);
+    throw err;
+  }
+}
+
+async function loadReminderTemplate() {
+  const tpl = await new Promise((resolve, reject) => {
+    db.get(
+      `SELECT id, template_key, name, subject, html_body, hero_image_url, enabled
+       FROM email_templates
+       WHERE template_key = 'PRE_SHOOT_REMINDER' AND enabled = 1
+       LIMIT 1`,
+      [],
+      (err, row) => (err ? reject(err) : resolve(row || null))
+    );
+  });
+
+  if (tpl) return tpl;
+  return {
+    subject: 'Pre-shoot reminder: {{eventType}} on {{eventDate}}',
+    html_body:
+      '<p>Hi {{clientName}},</p><p>This is a reminder for your {{eventType}} session on {{eventDate}} at {{eventTime}}.</p><p>Location: {{location}}</p>',
+    hero_image_url: null,
+  };
+}
+
+async function getDueReminderEvents() {
+  const rows = await new Promise((resolve, reject) => {
+    db.all(
+      `SELECT
+         e.id,
+         e.event_type,
+         e.event_date,
+         e.start_time,
+         e.location,
+         e.venue,
+         e.status,
+         e.Stage,
+         e.reminder_sent_at,
+         c.id AS client_id,
+         c.name AS client_name,
+         c.email AS client_email
+       FROM events e
+       JOIN clients c ON c.id = e.client_id
+       WHERE c.email IS NOT NULL
+         AND TRIM(c.email) <> ''
+         AND e.reminder_sent_at IS NULL
+         AND e.status NOT IN ('CANCELLED', 'DELIVERED')
+         AND (e.Stage IS NULL OR UPPER(e.Stage) <> 'ENQUIRY')`,
+      [],
+      (err, result) => (err ? reject(err) : resolve(result || []))
+    );
+  });
+
+  const now = new Date();
+  const horizon = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+  return rows.filter((row) => {
+    const eventDateTime = eventDateTimeFromRow(row);
+    if (!eventDateTime || Number.isNaN(eventDateTime.getTime())) return false;
+    return eventDateTime > now && eventDateTime <= horizon;
+  });
+}
+
+async function runRemindersJob() {
+  await ensureReminderSchema();
+
+  const [template, dueEvents] = await Promise.all([
+    loadReminderTemplate(),
+    getDueReminderEvents(),
+  ]);
+
+  const summary = {
+    scanned: dueEvents.length,
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  for (const event of dueEvents) {
+    const eventDate = formatEventDate(event);
+    const eventTime = event.start_time
+      ? String(event.start_time).slice(0, 5)
+      : '10:00';
+    const vars = {
+      clientName: event.client_name || 'Client',
+      clientEmail: event.client_email || '',
+      eventType: event.event_type || 'Session',
+      eventDate,
+      eventTime,
+      location: event.venue || event.location || 'To be shared by studio',
+      link: process.env.CLIENT_BASE_URL || '',
+    };
+
+    let subject = applyVars(template.subject, vars);
+    let html = applyVars(template.html_body, vars);
+
+    if (template.hero_image_url) {
+      const imgTag = `<p><img src="${template.hero_image_url}" alt="" style="max-width:100%;border-radius:8px;" /></p>`;
+      html = imgTag + html;
+    }
+
+    try {
+      await sendMailAsync({
+        from: process.env.EMAIL_FROM || 'no-reply@studio.com',
+        to: event.client_email,
+        subject,
+        html,
+      });
+
+      await new Promise((resolve, reject) => {
+        db.run(
+          `UPDATE events
+           SET reminder_sent_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [event.id],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+
+      summary.sent += 1;
+    } catch (err) {
+      summary.failed += 1;
+      summary.errors.push({
+        eventId: event.id,
+        email: event.client_email,
+        message: err.message || String(err),
+      });
+    }
+  }
+
+  return summary;
 }
 
 // GET /api/email-templates/status
@@ -314,6 +513,51 @@ exports.sendToClient = async (req, res) => {
     });
   } catch (err) {
     console.error('Email template sendToClient error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET /api/email-templates/reminders/status
+exports.reminderStatus = async (_req, res) => {
+  try {
+    await ensureReminderSchema();
+    const dueEvents = await getDueReminderEvents();
+    const dueSoon = dueEvents
+      .sort((a, b) => {
+        const aDate = eventDateTimeFromRow(a)?.getTime() || 0;
+        const bDate = eventDateTimeFromRow(b)?.getTime() || 0;
+        return aDate - bDate;
+      })
+      .slice(0, 5)
+      .map((row) => ({
+        eventId: row.id,
+        clientName: row.client_name,
+        eventType: row.event_type,
+        eventDate: row.event_date,
+        startTime: row.start_time,
+      }));
+
+    res.json({
+      dueCount: dueEvents.length,
+      dueSoon,
+      timing: '48 Hours Before',
+    });
+  } catch (err) {
+    console.error('Reminder status error:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/email-templates/reminders/run
+exports.runReminders = async (_req, res) => {
+  try {
+    const summary = await runRemindersJob();
+    res.json({
+      message: 'Reminder job completed',
+      ...summary,
+    });
+  } catch (err) {
+    console.error('Reminder run error:', err);
     res.status(500).json({ error: err.message });
   }
 };

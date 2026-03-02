@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 
 exports.uploadMedia = (req, res) => {
   if (!req.file) {

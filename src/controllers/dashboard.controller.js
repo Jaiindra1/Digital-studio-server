@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 
 const toDateString = (date) => date.toISOString().slice(0, 10);
 

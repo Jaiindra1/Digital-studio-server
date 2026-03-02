@@ -6,7 +6,7 @@ const multer = require("multer");
 const UAParser = require('ua-parser-js');
 const geoip = require('geoip-lite');
 const authenticate = require("../middleware/auth.middleware");
-const db = require("../db/db");
+const db = require("../config/db");
 
 const s3Client = require("../config/s3");
 const {

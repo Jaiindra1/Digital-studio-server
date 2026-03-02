@@ -1,5 +1,5 @@
 require('dotenv').config();
-require('./db/db');
+require('./config/db');
 const cors = require('cors');
 const express = require('express');
 const app = express();
@@ -8,7 +8,15 @@ const mediaRoutes = require("./routes/media.routes");
 const bookingRoutes = require("./routes/booking.routes");
 
 app.use(cors({
-  origin: ['http://localhost:3000','http://localhost:3001', 'http://localhost:5173', 'https://digital-studio-chi.vercel.app'],
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:5173',
+    'https://digital-studio-chi.vercel.app'
+  ],
   credentials: true
 }));
 app.use(express.json({ limit: '15mb' }));

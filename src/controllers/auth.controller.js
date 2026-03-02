@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 const { compare } = require('../utils/password');
 const { signToken } = require('../utils/jwt');
 

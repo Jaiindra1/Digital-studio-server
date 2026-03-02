@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 
 // POST /api/tasks
 exports.createTask = (req, res) => {

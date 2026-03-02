@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../config/db');
 const { sendMail } = require('../utils/mail');
 
 const ALLOWED_ATTENDANCE_STATUSES = ['present', 'absent', 'leave'];

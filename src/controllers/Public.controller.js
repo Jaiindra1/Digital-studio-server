@@ -1,5 +1,5 @@
 require("dotenv").config();
-const db = require("../db/db");
+const db = require("../config/db");
 const s3Client = require("../config/s3");
 const { GetObjectCommand } = require("@aws-sdk/client-s3");
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
