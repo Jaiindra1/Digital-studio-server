@@ -52,8 +52,8 @@ exports.createStudioProfile = async (req, res) => {
 
     await dbRun(
       `INSERT OR REPLACE INTO studio_profile
-       (id, studio_name, description, image_url, address, phone, email, website, instagram, created_at, updated_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       (id, studio_name, description, image_url, address, phone, email, website, instagram, updated_at)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
       [
         studio_name,
         description || null,
@@ -100,7 +100,14 @@ exports.getStudioProfileById = async (req, res) => {
       });
     }
 
-    return res.status(200).json(studio);
+    const normalizedStudio = {
+      ...studio,
+      studioName: studio.studio_name || null,
+      logo_url: studio.image_url || null,
+      logo: studio.image_url || null
+    };
+
+    return res.status(200).json(normalizedStudio);
 
   } catch (error) {
     console.error("Get Studio Error:", error);

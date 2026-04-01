@@ -268,7 +268,7 @@ exports.getById = (req, res) => {
     SELECT 
       e.id AS event_id,
       e.Stage as EventStatus, 
-      e.advance as Advance, 
+      e.advance_amount as Advance, 
       e.amount as TotalAmount, 
       e.created_at as Event_created_on,
       e.start_time as Event_Time, 

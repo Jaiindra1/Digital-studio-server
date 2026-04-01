@@ -40,6 +40,8 @@ app.use('/api/attendance', require('./routes/attendance.routes'));
 app.use('/api/tasks', require('./routes/task'));
 app.use('/api/notifications', require('./routes/notifications.routes'));
 app.use('/api/email-templates', require('./routes/emailTemplates.routes'));
+app.use('/api/careers', require('./routes/careers.routes'));
+app.use('/api/public/careers', require('./routes/public.careers.routes'));
 
 // Add booking route
 app.use('/api/booking', bookingRoutes);

@@ -2,6 +2,19 @@ const db = require('../config/db');
 const { compare } = require('../utils/password');
 const { signToken } = require('../utils/jwt');
 
+const hasColumn = async (tableName, columnName) => {
+  const result = await db.query(
+    `SELECT 1
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+  return Boolean(result.rows?.length);
+};
+
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -17,7 +30,13 @@ exports.login = async (req, res) => {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
-      const valid = await compare(password, user.password);
+      let valid = false;
+      try {
+        valid = user?.password ? await compare(password, user.password) : false;
+      } catch (cmpErr) {
+        console.error('Password compare error:', cmpErr);
+        return res.status(500).json({ message: 'Login processing error' });
+      }
       if (!valid) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
@@ -61,12 +80,19 @@ exports.login = async (req, res) => {
         );
       });
 
+      const hasCreatedAt = await hasColumn('user_sessions', 'created_at');
+
       if (existing) {
+        const updateExistingSql = hasCreatedAt
+          ? `UPDATE user_sessions
+             SET is_current = 1, last_active = UTC_TIMESTAMP(), created_at = UTC_TIMESTAMP()
+             WHERE id = ?`
+          : `UPDATE user_sessions
+             SET is_current = 1, last_active = UTC_TIMESTAMP()
+             WHERE id = ?`;
         await new Promise((resolve, reject) => {
           db.run(
-            `UPDATE user_sessions
-             SET is_current = 1, last_active = CURRENT_TIMESTAMP
-             WHERE id = ?`,
+            updateExistingSql,
             [existing.id],
             function(err) {
               if (err) {
@@ -78,12 +104,17 @@ exports.login = async (req, res) => {
           );
         });
       } else {
+        const insertSessionSql = hasCreatedAt
+          ? `INSERT INTO user_sessions
+             (user_id, device_name, ip_address, user_agent, is_current, last_active, created_at)
+             VALUES (?, ?, ?, ?, 1, UTC_TIMESTAMP(), UTC_TIMESTAMP())`
+          : `INSERT INTO user_sessions
+             (user_id, device_name, ip_address, user_agent, is_current, last_active)
+             VALUES (?, ?, ?, ?, 1, UTC_TIMESTAMP())`;
         // insert new session only when not already present
         await new Promise((resolve, reject) => {
           db.run(
-            `INSERT INTO user_sessions
-             (user_id, device_name, ip_address, user_agent, is_current)
-             VALUES (?, ?, ?, ?, 1)`,
+            insertSessionSql,
             [user.id, deviceName, ipAddress, userAgent],
             function(err) {
               if (err) {

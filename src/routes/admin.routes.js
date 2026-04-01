@@ -19,6 +19,19 @@ const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const router = express.Router();
 const BUCKET = process.env.S3_BUCKET_NAME;
 
+const hasColumn = async (tableName, columnName) => {
+  const result = await db.query(
+    `SELECT 1
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+  return Boolean(result.rows?.length);
+};
+
 /* -------------------- MULTER -------------------- */
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -203,55 +216,85 @@ router.put("/change-password", authenticate, (req, res) => {
 
 /* ==================== SESSIONS ==================== */
 
-router.get('/sessions', authenticate, (req, res) => {
+router.get('/sessions', authenticate, async (req, res) => {
+  try {
+    const adminId = req.user.id || req.user.sub;
+    const hasCreatedAt = await hasColumn('user_sessions', 'created_at');
+    const createdAtSelect = hasCreatedAt ? 'created_at,' : 'NULL AS created_at,';
+
+    db.all(
+      `SELECT id, device_name, ip_address, user_agent, ${createdAtSelect} last_active, is_current
+       FROM user_sessions
+       WHERE user_id = ?
+       ORDER BY last_active DESC`,
+      [adminId],
+      (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+
+        const sessions = rows.map((s) => {
+          // Parse browser & OS
+          const parser = new UAParser(s.user_agent);
+          const ua = parser.getResult();
+
+          const browser = ua.browser.name || 'Unknown Browser';
+          const os = ua.os.name || 'Unknown OS';
+
+          // Geo lookup
+          const ip =
+            s.ip_address === '::1' || s.ip_address === '127.0.0.1'
+              ? null
+              : s.ip_address;
+
+          const geo = ip ? geoip.lookup(ip) : null;
+
+          const location = geo
+            ? `${geo.city || 'Unknown City'}, ${geo.country}`
+            : 'Localhost';
+
+          return {
+            id: s.id,
+            isCurrent: s.is_current === 1,
+            deviceLabel: `${browser} on ${os}`,
+            ipAddress: s.ip_address,
+            location,
+            loginTime: s.created_at,
+            lastActive: s.last_active,
+          };
+        });
+
+        res.json(sessions);
+      }
+    );
+  } catch (err) {
+    console.error('Failed to load sessions:', err.message || err);
+    res.status(500).json({ error: 'Failed to load sessions' });
+  }
+});
+
+router.delete("/sessions/others", authenticate, (req, res) => {
   const adminId = req.user.id || req.user.sub;
+  const currentSessionId = req.sessionId || 0;
 
-  db.all(
-    `SELECT id, device_name, ip_address, user_agent, last_active, is_current
-     FROM user_sessions
-     WHERE user_id = ?
-     ORDER BY last_active DESC`,
-    [adminId],
-    (err, rows) => {
+  db.run(
+    `DELETE FROM user_sessions
+     WHERE user_id = ? AND id <> ?`,
+    [adminId, currentSessionId],
+    function (err) {
       if (err) return res.status(500).json({ error: 'Database error' });
-
-      const sessions = rows.map((s) => {
-        // Parse browser & OS
-        const parser = new UAParser(s.user_agent);
-        const ua = parser.getResult();
-
-        const browser = ua.browser.name || 'Unknown Browser';
-        const os = ua.os.name || 'Unknown OS';
-
-        // Geo lookup
-        const ip =
-          s.ip_address === '::1' || s.ip_address === '127.0.0.1'
-            ? null
-            : s.ip_address;
-
-        const geo = ip ? geoip.lookup(ip) : null;
-
-        const location = geo
-          ? `${geo.city || 'Unknown City'}, ${geo.country}`
-          : 'Localhost';
-
-        return {
-          id: s.id,
-          isCurrent: s.is_current === 1,
-          deviceLabel: `${browser} on ${os}`,
-          ipAddress: s.ip_address,
-          location,
-          lastActive: s.last_active,
-        };
-      });
-
-      res.json(sessions);
+      res.json({ success: true, removed: this.changes || 0 });
     }
   );
 });
 
 router.delete("/sessions/:id", authenticate, (req, res) => {
   const adminId = req.user.id || req.user.sub;
+  const currentSessionId = String(req.sessionId || '');
+  const targetSessionId = String(req.params.id || '');
+
+  if (currentSessionId && currentSessionId === targetSessionId) {
+    return res.status(400).json({ error: 'Cannot revoke current session from this endpoint' });
+  }
+
   db.run(
     `DELETE FROM user_sessions WHERE id = ? AND user_id = ?`,
     [req.params.id, adminId],

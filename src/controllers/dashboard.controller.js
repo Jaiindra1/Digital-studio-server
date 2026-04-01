@@ -2,6 +2,19 @@ const db = require('../config/db');
 
 const toDateString = (date) => date.toISOString().slice(0, 10);
 
+const hasColumn = async (tableName, columnName) => {
+  const result = await db.query(
+    `SELECT 1
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?
+       AND COLUMN_NAME = ?
+     LIMIT 1`,
+    [tableName, columnName]
+  );
+  return Boolean(result.rows?.length);
+};
+
 exports.getAdminSummary = async (_req, res) => {
   try {
     const now = new Date();
@@ -40,17 +53,30 @@ exports.getAdminSummary = async (_req, res) => {
       [toDateString(startOfWeek)]
     )).rows[0] || {};
 
+    const hasAdvance = await hasColumn('events', 'advance');
+    const hasAdvanceAmount = await hasColumn('events', 'advance_amount');
+    const advanceExpr = hasAdvance
+      ? 'COALESCE(e.advance, 0)'
+      : hasAdvanceAmount
+      ? 'COALESCE(e.advance_amount, 0)'
+      : '0';
+    const advanceGroupBy = hasAdvance
+      ? 'e.advance'
+      : hasAdvanceAmount
+      ? 'e.advance_amount'
+      : null;
+
     const paymentRows = (await db.query(
       `SELECT
          e.id,
          COALESCE(e.amount, e.total_amount, 0) AS total_amount,
-         COALESCE(e.advance, 0) AS advance_amount,
+         ${advanceExpr} AS advance_amount,
          COALESCE(SUM(p.amount), 0) AS paid_payments,
          e.event_date
        FROM events e
        LEFT JOIN payments p ON p.event_id = e.id
        WHERE e.status != 'CANCELLED'
-       GROUP BY e.id, e.amount, e.total_amount, e.advance, e.event_date`
+       GROUP BY e.id, e.amount, e.total_amount${advanceGroupBy ? `, ${advanceGroupBy}` : ''}, e.event_date`
     )).rows;
 
     let pendingAmount = 0;

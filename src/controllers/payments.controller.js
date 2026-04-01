@@ -213,7 +213,7 @@ exports.getPaymentsOverview = async (req, res) => {
         `SELECT
           e.id as event_id,
           e.amount as total_amount,
-          e.advance as advance_amount,
+          e.advance_amount as advance_amount,
           (SELECT SUM(p.amount) FROM payments p WHERE p.event_id = e.id) as other_payments
         FROM events e
         WHERE e.status != 'CANCELLED'
@@ -266,7 +266,7 @@ exports.getPendingPayments = async (_req, res) => {
            e.event_type,
            e.event_date,
            e.amount AS total_amount,
-           e.advance AS advance_amount,
+           e.advance_amount AS advance_amount,
            c.id AS client_id,
            c.name AS client_name,
            c.email AS client_email,
@@ -348,7 +348,7 @@ exports.sendPendingPaymentReminder = async (req, res) => {
            e.event_type,
            e.event_date,
            e.amount AS total_amount,
-           e.advance AS advance_amount,
+           e.advance_amount AS advance_amount,
            c.name AS client_name,
            c.email AS client_email
          FROM events e
@@ -423,11 +423,11 @@ exports.getPayments = async (req, res) => {
 
       // Fetch event total amount and advance from events table
       const event = await new Promise((resolve, reject) => {
-        db.get('SELECT amount, advance FROM events WHERE id = ?', [eventId], (err, row) => (err ? reject(err) : resolve(row)));
+        db.get('SELECT amount, advance_amount FROM events WHERE id = ?', [eventId], (err, row) => (err ? reject(err) : resolve(row)));
       });
 
       const total = event ? parseFloat(event.amount) : 0;
-      const advance = event && event.advance ? parseFloat(event.advance) : 0;
+      const advance = event && event.advance_amount ? parseFloat(event.advance_amount) : 0;
       // Sum of all payments made (excluding advance field)
       const paidPayments = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
       // Total paid = advance (from event) + sum of payments

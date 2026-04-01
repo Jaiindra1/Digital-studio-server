@@ -124,7 +124,7 @@ exports.getAllEvents = (req, res) => {
     e.guest_count,
     e.enquiry_message,
     e.amount_status,
-    e.advance,
+    e.advance_amount AS advance,
 
     c.id AS client_id,
     c.name AS client_name,
@@ -384,6 +384,7 @@ exports.updateEvent = (req, res) => {
     status,
     stage,
     advance,
+    advance_amount,
     amount
   } = req.body;
 
@@ -411,7 +412,8 @@ exports.updateEvent = (req, res) => {
   }
   if (stage !== undefined) { updates.push('Stage = ?'); values.push(stage); }
   if (amount !== undefined) { updates.push('amount = ?'); values.push(amount); }
-  if (advance !== undefined) { updates.push('advance = ?'); values.push(advance); }
+  const nextAdvance = advance_amount !== undefined ? advance_amount : advance;
+  if (nextAdvance !== undefined) { updates.push('advance_amount = ?'); values.push(nextAdvance); }
   console.log(values);
 
   if (updates.length === 0) {
