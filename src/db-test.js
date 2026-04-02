@@ -14,4 +14,4 @@ app.get("/db-test", async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log("Server running"));
+app.listen(3000, '0.0.0.0', () => console.log("Server running"));

@@ -7,6 +7,7 @@ const UAParser = require('ua-parser-js');
 const geoip = require('geoip-lite');
 const authenticate = require("../middleware/auth.middleware");
 const db = require("../config/db");
+const { sendMail } = require("../utils/mail");
 
 const s3Client = require("../config/s3");
 const {
@@ -44,16 +45,41 @@ function generateAvatarKey(adminId, filename) {
   return `avatars/admin-${adminId}-${crypto.randomUUID()}.${ext}`;
 }
 
+async function ensureUsernameColumn() {
+  try {
+    const exists = await hasColumn("users", "username");
+    if (exists) return;
+
+    await db.query(`ALTER TABLE users ADD COLUMN username VARCHAR(120) NULL`);
+    await db.query(
+      `UPDATE users
+       SET username = COALESCE(NULLIF(TRIM(full_name), ''), SUBSTRING_INDEX(email, '@', 1))
+       WHERE username IS NULL OR TRIM(username) = ''`
+    );
+  } catch (err) {
+    console.error("Failed to ensure users.username column:", err.message || err);
+    throw err;
+  }
+}
+
 /* ==================== PROFILE ==================== */
 
 /**
  * GET /api/admin/me
  */
-router.get("/me", authenticate, (req, res) => {
+router.get("/me", authenticate, async (req, res) => {
+  const adminId = req.user.id || req.user.sub;
+  try {
+    await ensureUsernameColumn();
+  } catch (e) {
+    return res.status(500).json({ error: "Database migration error" });
+  }
+
   db.get(
-    `SELECT id, email, role, full_name, phone, avatar_url, created_at, updated_at
-     FROM users`,
-    
+    `SELECT id, email, role, full_name, username, phone, avatar_url, created_at, updated_at
+     FROM users
+     WHERE id = ? AND role = 'Admin'`,
+    [adminId],
     async (err, row) => {
       if (err) return res.status(500).json({ error: "Database error" });
       if (!row) return res.status(404).json({ error: "Admin not found" });
@@ -75,30 +101,12 @@ router.get("/me", authenticate, (req, res) => {
         email: row.email,
         role: row.role,
         fullName: row.full_name || "",
+        username: row.username || "",
         phone: row.phone || "",
         avatarUrl: avatarSignedUrl,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       });
-    }
-  );
-});
-
-/**
- * PUT /api/admin/me
- */
-router.put("/me", authenticate, (req, res) => {
-  const adminId = req.user.id || req.user.sub;
-  const { fullName, phone } = req.body;
-
-  db.run(
-    `UPDATE users
-     SET full_name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP
-     WHERE id = ? AND role = 'Admin'`,
-    [fullName, phone, adminId],
-    err => {
-      if (err) return res.status(500).json({ error: "Database error" });
-      res.json({ success: true });
     }
   );
 });
@@ -309,34 +317,82 @@ router.delete("/sessions/:id", authenticate, (req, res) => {
  */
 router.put('/me', authenticate, (req, res) => {
   const adminId = req.user.id || req.user.sub;
-  const { fullName, phone } = req.body;
+  const { fullName, phone, username } = req.body;
+  const normalizedUsername = String(username || "").trim();
 
   // basic validation
   if (!fullName) {
     return res.status(400).json({ error: 'Full name is required' });
   }
+  if (!normalizedUsername) {
+    return res.status(400).json({ error: 'Username is required' });
+  }
 
-  const sql = `
-    UPDATE users
-    SET
-      full_name = ?,
-      phone = ?,
-      updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND role = 'Admin'
-  `;
+  ensureUsernameColumn()
+    .then(() => {
+      db.get(
+        `SELECT email, username FROM users WHERE id = ? AND role = 'Admin'`,
+        [adminId],
+        (fetchErr, existing) => {
+          if (fetchErr) {
+            console.error('DB error:', fetchErr.message);
+            return res.status(500).json({ error: 'Database error' });
+          }
+          if (!existing) {
+            return res.status(404).json({ error: 'Admin not found' });
+          }
 
-  db.run(sql, [fullName, phone, adminId], function (err) {
-    if (err) {
-      console.error('DB error:', err.message);
+          const sql = `
+            UPDATE users
+            SET
+              full_name = ?,
+              username = ?,
+              phone = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND role = 'Admin'
+          `;
+
+          db.run(sql, [fullName, normalizedUsername, phone, adminId], async function (err) {
+            if (err) {
+              console.error('DB error:', err.message);
+              return res.status(500).json({ error: 'Database error' });
+            }
+
+            if (this.changes === 0) {
+              return res.status(404).json({ error: 'Admin not found' });
+            }
+
+            const changed = String(existing.username || '') !== normalizedUsername;
+            if (changed && existing.email) {
+              try {
+                await sendMail({
+                  to: existing.email,
+                  subject: 'Admin Username Updated',
+                  html: `
+                    <p>Hello ${fullName || 'Admin'},</p>
+                    <p>Your admin username was updated.</p>
+                    <ul>
+                      <li><strong>Previous username:</strong> ${existing.username || '(not set)'}</li>
+                      <li><strong>New username:</strong> ${normalizedUsername}</li>
+                      <li><strong>Updated at:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</li>
+                    </ul>
+                    <p>If this was not you, please change your password immediately.</p>
+                  `,
+                });
+              } catch (mailErr) {
+                console.warn('Username update email failed:', mailErr.message || mailErr);
+              }
+            }
+
+            res.json({ success: true, usernameUpdated: changed });
+          });
+        }
+      );
+    })
+    .catch((e) => {
+      console.error('Failed to ensure username column:', e.message || e);
       return res.status(500).json({ error: 'Database error' });
-    }
-
-    if (this.changes === 0) {
-      return res.status(404).json({ error: 'Admin not found' });
-    }
-
-    res.json({ success: true });
-  });
+    });
 });
 
 

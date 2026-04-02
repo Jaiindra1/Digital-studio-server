@@ -12,6 +12,7 @@ const io = socketIo(server, {
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
       'http://127.0.0.1:5173',
+      'http://192.168.29.49:3000',
       'https://digital-studio-chi.vercel.app'
     ],
     methods: ['GET', 'POST'],
@@ -60,5 +61,5 @@ io.on('connection', (socket) => {
 // Make io available in routes/controllers
 app.set('io', io);
 
-const PORT = process.env.PORT || 4000 ;
-server.listen(PORT, () => console.log(`Server running on ${PORT}`));
+const PORT = process.env.PORT || 5000 ;
+server.listen(PORT,'0.0.0.0', () => console.log(`Server running on ${PORT}`));
