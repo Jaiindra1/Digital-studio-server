@@ -1,6 +1,8 @@
 const db = require('../config/db');
 const { getNotificationSettings } = require('./notifications.controller');
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const Razorpay = require('razorpay');
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -13,6 +15,23 @@ const transporter = nodemailer.createTransport({
       }
     : undefined,
 });
+
+function getRazorpayClient() {
+  const keyId = String(process.env.RAZORPAY_KEY_ID || '').trim();
+  const keySecret = String(process.env.RAZORPAY_KEY_SECRET || '').trim();
+
+  if (!keyId || !keySecret) {
+    return { client: null, error: 'Razorpay key ID/secret is missing on the server.' };
+  }
+
+  return {
+    client: new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret,
+    }),
+    error: null,
+  };
+}
 
 function sendMailWithFallback(mailOptions) {
   return new Promise((resolve, reject) => {
@@ -31,6 +50,296 @@ function sendMailWithFallback(mailOptions) {
     });
   });
 }
+
+async function getEventPaymentSnapshot(eventId) {
+  const event = await new Promise((resolve, reject) => {
+    db.get(
+      `SELECT e.*, c.name AS clientName, c.email AS clientEmail, c.phone AS clientPhone
+       FROM events e
+       JOIN clients c ON e.client_id = c.id
+       WHERE e.id = ?`,
+      [eventId],
+      (err, row) => (err ? reject(err) : resolve(row))
+    );
+  });
+
+  if (!event) return null;
+
+  const payments = await new Promise((resolve, reject) => {
+    db.all(
+      `SELECT id, amount, method, reference, payment_type, created_at
+       FROM payments
+       WHERE event_id = ?
+       ORDER BY created_at ASC`,
+      [eventId],
+      (err, rows) => (err ? reject(err) : resolve(rows || []))
+    );
+  });
+
+  const total = parseFloat(event.amount) || 0;
+  const advance = parseFloat(event.advance_amount) || 0;
+  const paidFromPayments = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const advancePaid = payments
+    .filter((p) => String(p.payment_type || '').toUpperCase().replace(/\s+/g, '_') === 'ADVANCE')
+    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+  const advanceDue = Math.max(advance - advancePaid, 0);
+  const paid = paidFromPayments;
+  const remaining = Math.max(total - paid, 0);
+
+  return {
+    event,
+    payments,
+    summary: {
+      total_amount: total,
+      advance_amount: advance,
+      advance_paid: advancePaid,
+      advance_due: advanceDue,
+      paid_amount: paid,
+      remaining_amount: remaining,
+    },
+  };
+}
+
+async function emitPaymentRecorded(req, { eventId, amount, method, reference, type, recordedBy = null }) {
+  const event = await new Promise((resolve, reject) => {
+    db.get(
+      `SELECT e.*, c.name AS clientName
+       FROM events e
+       JOIN clients c ON e.client_id = c.id
+       WHERE e.id = ?`,
+      [eventId],
+      (err, row) => (err ? reject(err) : resolve(row))
+    );
+  });
+
+  if (!event) {
+    throw new Error('Event not found');
+  }
+
+  const settings = await getNotificationSettings().catch((e) => {
+    console.warn('Failed to load notification settings for payment emit:', e.message || e);
+    return null;
+  });
+
+  const alerts = settings && settings.bookingAlerts ? settings.bookingAlerts : null;
+  const notificationsEnabled = !alerts || alerts.depositReceived !== false;
+
+  if (notificationsEnabled) {
+    const payload = JSON.stringify({
+      invoiceId: `BK-${eventId}`,
+      amount,
+      clientId: event.client_id,
+      clientName: event.clientName,
+      method: method || 'Online',
+      reference: reference || null,
+      paymentType: type,
+      recordedBy,
+      timestamp: new Date().toISOString(),
+    });
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO notifications (type, payload, user_id)
+         VALUES (?, ?, ?)`,
+        ['PAYMENT_RECEIVED', payload, null],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to('admins').emit('paymentReceived', JSON.parse(payload));
+    }
+  }
+
+  return event;
+}
+
+exports.createRazorpayOrder = async (req, res) => {
+  const { eventId, clientId, paymentType = 'Total Amount', amount } = req.body || {};
+  const { client: razorpay, error: razorpayConfigError } = getRazorpayClient();
+
+  if (!razorpay) {
+    return res.status(500).json({ error: razorpayConfigError || 'Razorpay is not configured on the server' });
+  }
+
+  if (!eventId || !clientId) {
+    return res.status(400).json({ error: 'eventId and clientId are required' });
+  }
+
+  try {
+    const snapshot = await getEventPaymentSnapshot(eventId);
+    if (!snapshot) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (Number(snapshot.event.client_id) !== Number(clientId)) {
+      return res.status(403).json({ error: 'This event does not belong to the client' });
+    }
+
+    // Calculate advance due (advance amount minus any advance payments already made)
+    const advancePayments = snapshot.payments
+      .filter(p => (p.payment_type || '').toUpperCase().includes('ADVANCE'))
+      .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+    const advanceDue = Math.max(0, (parseFloat(snapshot.event.advance_amount) || 0) - advancePayments);
+
+    // Determine payment amount based on type
+    let paymentAmount = 0;
+    if (paymentType && paymentType.toUpperCase().includes('ADVANCE')) {
+      if (advanceDue <= 0) {
+        return res.status(400).json({ error: 'Advance is already fully paid' });
+      }
+      paymentAmount = advanceDue;
+    } else {
+      // Full payment or balance
+      if (snapshot.summary.remaining_amount <= 0) {
+        return res.status(400).json({ error: 'This event is already fully paid' });
+      }
+      paymentAmount = amount || snapshot.summary.remaining_amount;
+    }
+
+    const amountPaise = Math.round(paymentAmount * 100);
+    const receipt = `event_${eventId}_${Date.now()}`;
+
+    const order = await razorpay.orders.create({
+      amount: amountPaise,
+      currency: 'INR',
+      receipt,
+      notes: {
+        eventId: String(eventId),
+        clientId: String(clientId),
+        paymentType: paymentType || 'Total Amount',
+      },
+    });
+
+    return res.json({
+      order,
+      key: process.env.RAZORPAY_KEY_ID,
+      amount: paymentAmount,
+      paymentType: paymentType || 'Total Amount',
+      summary: {
+        ...snapshot.summary,
+        advance_due: advanceDue,
+      },
+      client: {
+        name: snapshot.event.clientName || 'Client',
+        email: snapshot.event.clientEmail || '',
+        contact: snapshot.event.clientPhone || '',
+      },
+      event: {
+        id: snapshot.event.id,
+        type: snapshot.event.event_type,
+      },
+    });
+  } catch (err) {
+    console.error('Create Razorpay order error:', err);
+    return res.status(500).json({
+      error: 'Failed to create Razorpay order',
+      details: err?.error?.description || err?.message || 'Unknown Razorpay error',
+    });
+  }
+};
+
+exports.verifyRazorpayPayment = async (req, res) => {
+  const {
+    eventId,
+    clientId,
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+    paymentType = 'Total Amount',
+  } = req.body || {};
+
+  const { error: razorpayConfigError } = getRazorpayClient();
+
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    return res.status(500).json({ error: razorpayConfigError || 'Razorpay is not configured on the server' });
+  }
+
+  if (!eventId || !clientId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ error: 'Missing Razorpay payment verification fields' });
+  }
+
+  try {
+    const snapshot = await getEventPaymentSnapshot(eventId);
+    if (!snapshot) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (Number(snapshot.event.client_id) !== Number(clientId)) {
+      return res.status(403).json({ error: 'This event does not belong to the client' });
+    }
+
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ error: 'Invalid Razorpay signature' });
+    }
+
+    const existingPayment = await new Promise((resolve, reject) => {
+      db.get(
+        `SELECT id FROM payments WHERE reference = ?`,
+        [razorpay_payment_id],
+        (err, row) => (err ? reject(err) : resolve(row))
+      );
+    });
+
+    if (existingPayment) {
+      return res.json({ message: 'Payment already verified', duplicate: true });
+    }
+
+    // Calculate advance due for this payment
+    const advancePayments = snapshot.payments
+      .filter(p => (p.payment_type || '').toUpperCase().includes('ADVANCE'))
+      .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+    const advanceDue = Math.max(0, (parseFloat(snapshot.event.advance_amount) || 0) - advancePayments);
+
+    // Determine amount to record based on payment type
+    let amountToRecord = 0;
+    let paymentTypeToRecord = paymentType || 'Total Amount';
+    
+    if (paymentTypeToRecord.toUpperCase().includes('ADVANCE')) {
+      amountToRecord = advanceDue;
+      paymentTypeToRecord = 'Advance';
+    } else {
+      amountToRecord = snapshot.summary.remaining_amount;
+      paymentTypeToRecord = 'Total Amount';
+    }
+
+    if (amountToRecord <= 0) {
+      return res.status(400).json({ error: 'No pending amount to record for this event' });
+    }
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO payments (event_id, amount, method, reference, recorded_by, payment_type)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [eventId, amountToRecord, 'Razorpay', razorpay_payment_id, null, paymentTypeToRecord],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    await emitPaymentRecorded(req, {
+      eventId,
+      amount: amountToRecord,
+      method: 'Razorpay',
+      reference: razorpay_payment_id,
+      type: paymentTypeToRecord,
+      recordedBy: null,
+    });
+
+    return res.json({
+      message: 'Payment verified and recorded successfully',
+      paymentId: razorpay_payment_id,
+    });
+  } catch (err) {
+    console.error('Verify Razorpay payment error:', err);
+    return res.status(500).json({ error: 'Failed to verify payment' });
+  }
+};
 
 // POST /api/payments/notify
 exports.notify = async (req, res) => {
@@ -93,10 +402,42 @@ exports.record = async (req, res) => {
   }
 
   try {
+    const snapshot = await getEventPaymentSnapshot(eventId);
+    if (!snapshot) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const requestedAmount = Number(amount) || 0;
+    const normalizedType = String(type || '').toUpperCase().replace(/\s+/g, '_');
+    const advanceDue = Number(snapshot.summary.advance_due) || 0;
+    const remainingAmount = Number(snapshot.summary.remaining_amount) || 0;
+
+    if (normalizedType === 'ADVANCE') {
+      if (advanceDue <= 0) {
+        return res.status(400).json({ error: 'Advance is already fully paid' });
+      }
+
+      if (requestedAmount > advanceDue) {
+        return res.status(400).json({
+          error: `Advance payment cannot exceed the remaining advance due of ${advanceDue}`,
+        });
+      }
+    } else {
+      if (remainingAmount <= 0) {
+        return res.status(400).json({ error: 'This event is already fully paid' });
+      }
+
+      if (requestedAmount > remainingAmount) {
+        return res.status(400).json({
+          error: `Payment cannot exceed the remaining balance of ${remainingAmount}`,
+        });
+      }
+    }
+
     // 1. Check if payment of this type already exists for the event
     const existingPayment = await new Promise((resolve, reject) => {
       db.get(
-        `SELECT p.id, p.recorded_by
+        `SELECT p.id, p.amount, p.recorded_by
          FROM payments p
          WHERE p.event_id = ? AND p.payment_type = ?`,
         [eventId, type],
@@ -105,9 +446,30 @@ exports.record = async (req, res) => {
     });
 
     if (existingPayment) {
-      return res.status(409).json({
-        error: `Payment"${type}" already recorded`,
-        recordedBy: existingPayment.recordedByName || existingPayment.recorded_by
+      const updatedAmount = (Number(existingPayment.amount) || 0) + requestedAmount;
+
+      await new Promise((resolve, reject) => {
+        db.run(
+          `UPDATE payments
+           SET amount = ?, method = ?, reference = ?, recorded_by = ?
+           WHERE id = ?`,
+          [updatedAmount, method || null, reference || null, recordedBy, existingPayment.id],
+          (err) => (err ? reject(err) : resolve())
+        );
+      });
+
+      await emitPaymentRecorded(req, {
+        eventId,
+        amount: requestedAmount,
+        method: method || 'Manual',
+        reference: reference || null,
+        type,
+        recordedBy,
+      });
+
+      return res.json({
+        message: 'Payment updated successfully',
+        updated: true,
       });
     }
 
@@ -116,69 +478,22 @@ exports.record = async (req, res) => {
       db.run(
         `INSERT INTO payments (event_id, amount, method, reference, recorded_by, payment_type)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [eventId, amount, method || null, reference || null, recordedBy, type],
+        [eventId, requestedAmount, method || null, reference || null, recordedBy, type],
         (err) => (err ? reject(err) : resolve())
       );
     });
 
-    // 3. Get event details for notification
-    const event = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT e.*, c.name AS clientName
-         FROM events e
-         JOIN clients c ON e.client_id = c.id
-         WHERE e.id = ?`,
-        [eventId],
-        (err, row) => (err ? reject(err) : resolve(row))
-      );
+    await emitPaymentRecorded(req, {
+      eventId,
+      amount: requestedAmount,
+      method: method || 'Manual',
+      reference: reference || null,
+      type,
+      recordedBy,
     });
-
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-
-    // 4. Create notification payload (respect bookingAlerts.depositReceived setting)
-    const settings = await getNotificationSettings().catch((e) => {
-      console.warn('Failed to load notification settings for payments.record:', e.message || e);
-      return null;
-    });
-
-    const alerts = settings && settings.bookingAlerts ? settings.bookingAlerts : null;
-    const notificationsEnabled = !alerts || alerts.depositReceived !== false;
-
-    if (notificationsEnabled) {
-      const payload = JSON.stringify({
-        invoiceId: `BK-${eventId}`,
-        amount,
-        clientId: event.client_id,
-        clientName: event.clientName,
-        method: method || 'Manual',
-        reference: reference || null,
-        paymentType: type,
-        recordedBy,
-        timestamp: new Date().toISOString(),
-      });
-
-      await new Promise((resolve, reject) => {
-        db.run(
-          `INSERT INTO notifications (type, payload, user_id)
-           VALUES (?, ?, ?)`,
-          ['PAYMENT_RECEIVED', payload, null],
-          (err) => (err ? reject(err) : resolve())
-        );
-      });
-
-      // 5. Emit to admins
-      const io = req.app.get('io');
-      if (io) {
-        io.to('admins').emit('paymentReceived', JSON.parse(payload));
-      }
-    }
 
     res.json({
-      message: notificationsEnabled
-        ? 'Payment recorded successfully'
-        : 'Payment recorded successfully (payment alerts disabled)',
+      message: 'Payment recorded successfully',
     });
 
   } catch (err) {

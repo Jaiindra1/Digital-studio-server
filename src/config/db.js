@@ -10,10 +10,25 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  connectTimeout: 15000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
   ssl: {
     rejectUnauthorized: false,
   },
 });
+
+function isTransientDbError(err) {
+  const transientCodes = new Set([
+    "ECONNRESET",
+    "PROTOCOL_CONNECTION_LOST",
+    "ETIMEDOUT",
+    "EPIPE",
+    "ECONNREFUSED",
+  ]);
+
+  return !!(err && transientCodes.has(err.code));
+}
 
 function normalizeSql(sql) {
   let out = String(sql || "");
@@ -59,15 +74,33 @@ function parsePreparedArgs(args) {
 }
 
 async function execute(sql, params) {
-  const [rows] = await pool.query(normalizeSql(sql), params || []);
-  if (Array.isArray(rows)) {
-    return { rows, lastID: undefined, changes: 0 };
+  const normalizedSql = normalizeSql(sql);
+  const values = params || [];
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const [rows] = await pool.query(normalizedSql, values);
+      if (Array.isArray(rows)) {
+        return { rows, lastID: undefined, changes: 0 };
+      }
+      return {
+        rows: [],
+        lastID: rows.insertId || undefined,
+        changes: typeof rows.affectedRows === "number" ? rows.affectedRows : 0,
+      };
+    } catch (err) {
+      if (!isTransientDbError(err) || attempt === 1) {
+        throw err;
+      }
+
+      console.warn(`Transient DB error (${err.code}) on query retrying once...`);
+      try {
+        await pool.query("SELECT 1");
+      } catch (_probeErr) {
+        // noop; next loop iteration will retry original query
+      }
+    }
   }
-  return {
-    rows: [],
-    lastID: rows.insertId || undefined,
-    changes: typeof rows.affectedRows === "number" ? rows.affectedRows : 0,
-  };
 }
 
 const db = {

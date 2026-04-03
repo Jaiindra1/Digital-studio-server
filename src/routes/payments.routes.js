@@ -4,6 +4,8 @@ const paymentsController = require('../controllers/payments.controller');
 
 // Endpoint for payment providers or internal callers to notify the app
 router.post('/notify', paymentsController.notify);
+router.post('/create-order', paymentsController.createRazorpayOrder);
+router.post('/verify', paymentsController.verifyRazorpayPayment);
 
 // Record a payment manually by admin
 router.post('/record', paymentsController.record);

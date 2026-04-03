@@ -11,6 +11,58 @@ const { sendMail } = require('../utils/mail');
 
 const BUCKET = process.env.S3_BUCKET_NAME;
 
+function parseNotificationPayload(payload) {
+  if (!payload) return {};
+  if (typeof payload === 'object') return payload;
+  try {
+    return JSON.parse(payload);
+  } catch (_err) {
+    return {};
+  }
+}
+
+async function getFallbackEventMediaFromNotifications(eventId) {
+  const notification = await new Promise((resolve, reject) => {
+    db.get(
+      `SELECT id, payload, created_at
+       FROM notifications
+       WHERE type = 'GALLERY_UPLOAD'
+         AND payload LIKE ?
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [`%"eventId":${Number(eventId)}%`],
+      (err, row) => (err ? reject(err) : resolve(row))
+    );
+  });
+
+  if (!notification) return [];
+
+  const payload = parseNotificationPayload(notification.payload);
+  const uploaded = Array.isArray(payload.uploaded) ? payload.uploaded : [];
+
+  return uploaded.map((asset, index) => ({
+    id: asset?.id || `notification-${notification.id}-${index}`,
+    event_id: Number(eventId),
+    staff_id: asset?.staff_id || null,
+    type: asset?.type || 'IMAGE',
+    title: asset?.title || asset?.name || `Asset ${index + 1}`,
+    s3_key: asset?.key || asset?.s3_key || null,
+    status: asset?.status || 'SUBMITTED',
+    created_at: notification.created_at || null,
+  }));
+}
+
+function buildArchiveFileName(asset) {
+  const rawTitle = String(asset?.title || '').trim();
+  if (rawTitle) return rawTitle;
+
+  const keyName = String(asset?.s3_key || '').split('/').pop();
+  if (keyName) return keyName;
+
+  const ext = String(asset?.type || '').toUpperCase() === 'VIDEO' ? 'mp4' : 'jpg';
+  return `asset-${asset?.id || Date.now()}.${ext}`;
+}
+
 // Email transporter using Gmail (or other SMTP) from env
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -1015,7 +1067,7 @@ exports.getEventMediaForClient = async (req, res) => {
       return res.status(404).json({ message: 'Event not found for this client' });
     }
 
-    const rows = await new Promise((resolve, reject) => {
+    let rows = await new Promise((resolve, reject) => {
       db.all(
         `SELECT id, event_id, staff_id, type, title, s3_key, status, created_at
          FROM event_assets
@@ -1025,6 +1077,10 @@ exports.getEventMediaForClient = async (req, res) => {
         (err, data) => (err ? reject(err) : resolve(data || []))
       );
     });
+
+    if (!rows.length) {
+      rows = await getFallbackEventMediaFromNotifications(eventId);
+    }
 
     const media = await Promise.all(
       rows.map(async (row) => {
@@ -1076,13 +1132,17 @@ exports.downloadEventMediaZip = async (req, res) => {
       return res.status(404).json({ message: 'Event not found for this client' });
     }
 
-    const assets = await new Promise((resolve, reject) => {
+    let assets = await new Promise((resolve, reject) => {
       db.all(
         `SELECT id, s3_key, title, type FROM event_assets WHERE event_id = ? ORDER BY created_at DESC`,
         [eventId],
         (err, rows) => (err ? reject(err) : resolve(rows || []))
       );
     });
+
+    if (!assets.length) {
+      assets = await getFallbackEventMediaFromNotifications(eventId);
+    }
 
     if (!assets.length) {
       return res.status(404).json({ message: 'No media available for this event' });
@@ -1103,14 +1163,14 @@ exports.downloadEventMediaZip = async (req, res) => {
 
     archive.pipe(res);
 
-    for (const asset of assets) {
-      if (!asset.s3_key) continue;
-      try {
-        const obj = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET, Key: asset.s3_key }));
-        const safeName = `${asset.title || asset.id}.${asset.type === 'VIDEO' ? 'mp4' : 'jpg'}`;
-        archive.append(obj.Body, { name: safeName });
-      } catch (err) {
-        console.warn('Skipping asset (fetch failed):', asset.id, err.message);
+      for (const asset of assets) {
+        if (!asset.s3_key) continue;
+        try {
+          const obj = await s3Client.send(new GetObjectCommand({ Bucket: BUCKET, Key: asset.s3_key }));
+          const safeName = buildArchiveFileName(asset);
+          archive.append(obj.Body, { name: safeName });
+        } catch (err) {
+          console.warn('Skipping asset (fetch failed):', asset.id, err.message);
       }
     }
 

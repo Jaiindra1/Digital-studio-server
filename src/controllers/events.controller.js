@@ -125,6 +125,27 @@ exports.getAllEvents = (req, res) => {
     e.enquiry_message,
     e.amount_status,
     e.advance_amount AS advance,
+    COALESCE(pay.paid_from_payments, 0) AS paid_from_payments,
+    COALESCE(pay.advance_from_payments, 0) AS advance_from_payments,
+    (
+      CASE
+        WHEN COALESCE(e.advance_amount, 0) > COALESCE(pay.advance_from_payments, 0)
+          THEN COALESCE(e.advance_amount, 0)
+        ELSE COALESCE(pay.advance_from_payments, 0)
+      END
+      + (COALESCE(pay.paid_from_payments, 0) - COALESCE(pay.advance_from_payments, 0))
+    ) AS paid_amount,
+    GREATEST(
+      COALESCE(e.amount, 0) - (
+        CASE
+          WHEN COALESCE(e.advance_amount, 0) > COALESCE(pay.advance_from_payments, 0)
+            THEN COALESCE(e.advance_amount, 0)
+          ELSE COALESCE(pay.advance_from_payments, 0)
+        END
+        + (COALESCE(pay.paid_from_payments, 0) - COALESCE(pay.advance_from_payments, 0))
+      ),
+      0
+    ) AS remaining_amount,
 
     c.id AS client_id,
     c.name AS client_name,
@@ -141,6 +162,19 @@ exports.getAllEvents = (req, res) => {
 
   FROM events e
   JOIN clients c ON c.id = e.client_id
+  LEFT JOIN (
+    SELECT
+      event_id,
+      COALESCE(SUM(amount), 0) AS paid_from_payments,
+      COALESCE(SUM(
+        CASE
+          WHEN UPPER(REPLACE(COALESCE(payment_type, ''), ' ', '_')) = 'ADVANCE' THEN amount
+          ELSE 0
+        END
+      ), 0) AS advance_from_payments
+    FROM payments
+    GROUP BY event_id
+  ) pay ON pay.event_id = e.id
   LEFT JOIN event_staff es ON es.event_id = e.id
   LEFT JOIN staff s ON s.id = es.staff_id
   LEFT JOIN event_cancellations ec ON ec.event_id = e.id
@@ -173,6 +207,10 @@ exports.getAllEvents = (req, res) => {
             createdAt: row.created_at,
             amount: row.amount,
             advance: row.advance,
+            paid_from_payments: row.paid_from_payments,
+            advance_from_payments: row.advance_from_payments,
+            paid_amount: row.paid_amount,
+            remaining_amount: row.remaining_amount,
             amount_status: row.amount_status,
             cancellationReason: row.cancellation_reason || null,
 

@@ -7,18 +7,36 @@ const albumRoutes = require("./routes/album.routes");
 const mediaRoutes = require("./routes/media.routes");
 const bookingRoutes = require("./routes/booking.routes");
 
+const allowedOrigins = new Set([
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:3001',
+  'http://127.0.0.1:5173',
+  'http://192.168.29.49:3000',
+  'http://192.168.29.49:5173',
+  'https://digital-studio-chi.vercel.app'
+]);
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:5173',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:3001',
-    'http://127.0.0.1:5173',
-    'http://192.168.29.49:3000',
-    'https://digital-studio-chi.vercel.app'
-  ],
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow non-browser clients (Postman, curl, server-to-server)
+    if (!origin) return callback(null, true);
+
+    // Exact known origins
+    if (allowedOrigins.has(origin)) return callback(null, true);
+
+    // Allow LAN dev hosts on common Vite/React ports
+    if (/^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:(3000|3001|5173)$/.test(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Name']
 }));
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -43,6 +61,7 @@ app.use('/api/notifications', require('./routes/notifications.routes'));
 app.use('/api/email-templates', require('./routes/emailTemplates.routes'));
 app.use('/api/careers', require('./routes/careers.routes'));
 app.use('/api/public/careers', require('./routes/public.careers.routes'));
+app.use('/api/products', require('./routes/products.routes'));
 
 // Add booking route
 app.use('/api/booking', bookingRoutes);
