@@ -1,0 +1,42 @@
+{
+  "name": "studio-backend",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.966.0",
+    "@aws-sdk/s3-request-presigner": "^3.966.0",
+    "archiver": "^6.0.1",
+    "aws-sdk": "^2.1693.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "geoip-lite": "^1.4.10",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.2",
+    "multer-s3": "^3.0.1",
+    "mysql2": "^3.18.2",
+    "nodemailer": "^6.10.1",
+    "nodemon": "^3.1.14",
+    "npm": "^11.11.0",
+    "razorpay": "^2.9.6",
+    "run": "^1.5.0",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
+    "sqlite3": "^5.1.7",
+    "start": "^5.1.0",
+    "ua-parser-js": "^2.0.8",
+    "uuid": "^13.0.0"
+  },
+  "main": "src/server.js",
+  "devDependencies": {}
+}

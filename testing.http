@@ -1,0 +1,184 @@
+###
+curl -X POST http://localhost:4000/api/auth/login \
+-H "Content-Type: application/json" \
+-d '{
+  "email": "admin@example.com",
+  "password": "StrongPassword123"
+}'
+###
+curl -X GET http://localhost:4000/health
+###
+curl -X GET http://localhost:4000/api/admin/me
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc3MjQzOTEzNywiZXhwIjoxNzcyNDQyNzM3fQ.eHCThB5UsmZtUgYscPGn6P3rqkABN4IqkKb_SVI3j-E"
+###
+curl -X POST http://localhost:4000/api/staff
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc3MjQzOTEzNywiZXhwIjoxNzcyNDQyNzM3fQ.eHCThB5UsmZtUgYscPGn6P3rqkABN4IqkKb_SVI3j-E"
+-H "Content-Type: application/json"
+-d
+'{
+  "name": "Ravi Kumar",
+  "email": "ravi@studio.com",
+  "role": "Photographer",
+  "skills": "Wedding,Outdoor"
+}'
+###
+curl -X GET http://localhost:4000/api/staff
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2Nzc1NDQ3OCwiZXhwIjoxNzY3NzU4MDc4fQ.JifgyQoZIIsufuph0YgqWV4IfvQ3zHR3TlTbSytTvNM"
+###
+curl -X PUT http://localhost:4000/api/staff/2
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5MTIxNiwiZXhwIjoxNzY3NTk0ODE2fQ.Es6FDHBG6Nx6nQdR_NT97tCszU6bUniAtxbgmo0fN2Q"
+-H Content-Type: application/json
+-d '{
+  "name": "Ravi K",
+  "email": "ravi@studio.com",
+  "role": "Senior Photographer",
+  "skills": "Wedding,Drone"
+}'
+###
+PUT http://localhost:4000/api/staff/2
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5OTA2NywiZXhwIjoxNzY3NjAyNjY3fQ.Wa2s4qHbptVljq2poLXj0q1BnC-G4Fi1BKAp49vH4lc
+Content-Type: application/json
+
+{
+    "name": "Alex Morgan",
+    "email": "alex.m@studio.com",
+    "role": "videographer",
+    "skills": "Portrait,Lighting,Camera Man",
+    "status": "INACTIVE",
+    "inactive_reason": "not intrested"
+}
+###
+GET http://localhost:4000/api/clients
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzU5OTA2NywiZXhwIjoxNzY3NjAyNjY3fQ.Wa2s4qHbptVljq2poLXj0q1BnC-G4Fi1BKAp49vH4lc
+Content-Type: application/json
+
+{
+  "name": "Suresh Kumar",
+  "phone": "9876543210",
+  "email": "suresh@gmail.com",
+  "address": "Hyderabad",
+  "notes": "Wedding client"
+}
+
+###
+POST http://localhost:4000/api/events/7/assign-staff
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzkyOTExNCwiZXhwIjoxNzY3OTMyNzE0fQ.tmUnMjzZOuA1ea1gF-YECLcgNmVZdMgFZjo2CRdm6JE
+Content-Type: application/json
+
+{
+  "staffIds": [1, 2],
+  "roles": {
+    "1": "Lead Photographer",
+    "2": "Videographer"
+  }
+}
+###
+GET http://localhost:4000/api/events
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzkyOTExNCwiZXhwIjoxNzY3OTMyNzE0fQ.tmUnMjzZOuA1ea1gF-YECLcgNmVZdMgFZjo2CRdm6JE
+Content-Type: application/json
+
+{
+  "staffIds": [1, 2],
+  "roles": {
+    "1": "Lead Photographer",
+    "2": "Videographer"
+  }
+}
+
+###
+GET http://localhost:4000/api/public/media
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzY5Nzc2MywiZXhwIjoxNzY3NzAxMzYzfQ.vCF0PpH9wJVl0xTpsqbjFq-1N4cCoGTr2nTUX3Y-3lw
+###
+POST http://localhost:4000/api/events
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2Nzg0ODczNiwiZXhwIjoxNzY3ODUyMzM2fQ.J53pb3S_65zdglegSLIvreiasvJMR_d7gYcBUyMWP0M
+Content-Type: application/json
+
+{
+  "client_name": "Ramesh Kumar",
+  "client_phone": "9876543210",
+  "client_email": "ramesh@gmail.com",
+  "event_type": "Wedding",
+  "event_date": "2026-02-10",
+  "start_time": "10:00",
+  "end_time": "18:00",
+  "location": "Hyderabad"
+}
+
+###
+GET  http://localhost:4000/api/clients
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2Nzg0ODczNiwiZXhwIjoxNzY3ODUyMzM2fQ.J53pb3S_65zdglegSLIvreiasvJMR_d7gYcBUyMWP0M
+###
+GET  http://localhost:4000/api/events
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2NzkzMzE2NCwiZXhwIjoxNzY3OTM2NzY0fQ.TRSF2xJcCU7-VHxpJw_dBQMEqkrvNj2tJEdP4oW0bEw
+###
+POST /api/admin/galleries
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODAyMTk0NCwiZXhwIjoxNzY4MDI1NTQ0fQ.HB0V7-g2kD2jKH7ApYHFzD0Kdec0vkeCdJrm3zLmCvA
+Content-Type: application/json
+{
+  "subcategory_id": 3,
+  "title": "Outdoor Wedding – Jaipur",
+  "slug": "outdoor-wedding-jaipur"
+}
+###
+GET http://localhost:4000/api/gallery/media
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODA5OTI3MSwiZXhwIjoxNzY4MTAyODcxfQ.1V_6VozgYqYgmjDnC-ZrFWY9M2UOweu8iJ2hh0J8t8Q
+###
+GET http://localhost:4000/api/cat/categories
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODE5ODMzOSwiZXhwIjoxNzY4MjAxOTM5fQ.5vSxxwOrjvmCeszmnM_Nz511aQNfr0iFqxvKs2xN6cw
+###
+GET http://localhost:4000/api/cat/labels/WEDDINGS
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODE5ODMzOSwiZXhwIjoxNzY4MjAxOTM5fQ.5vSxxwOrjvmCeszmnM_Nz511aQNfr0iFqxvKs2xN6cw
+###
+POST http://localhost:4000/api/albums
+Authorization: Bearerey eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODIxMTE5OCwiZXhwIjoxNzY4MjE0Nzk4fQ.VpdZ5xyanfaVHm6aSAVh5HeokrM3yqh2Ad6RT1_QR18
+###
+GET http://localhost:4000/api/albums/media/album/24
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODM3MzkyMywiZXhwIjoxNzY4Mzc3NTIzfQ.73OFVSyVsFyKEBOKM267Az9EOR8eEMV6t4z7L6z-a_Q
+###
+GET http://localhost:4000/api/albums/gallery/24
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODM3MzkyMywiZXhwIjoxNzY4Mzc3NTIzfQ.73OFVSyVsFyKEBOKM267Az9EOR8eEMV6t4z7L6z-a_Q
+###
+GET http://localhost:4000/api/albums/recent
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODIxODIzMSwiZXhwIjoxNzY4MjIxODMxfQ.Y4yOFfhRce72aB-tZtkhQCXj3A2ijEiQFsVLWMLFCwE
+###
+PUT http://localhost:4000/api/albums/update-full 
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODQ1ODcwNiwiZXhwIjoxNzY4NDYyMzA2fQ.6aeYtsJT35p3CQ74WcBc6NCXjVCNbIfDaw8xnxnm5QE
+###
+POST http://localhost:4000/api/studio/update 
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODQ4OTI5MSwiZXhwIjoxNzY4NDkyODkxfQ.m0s5IDi8YVXZJbLkAlfJUj9u42-xB-A_nHuP8gx1w6Q
+Content-Type: application/json
+{
+  "studioName": "Elite Studio",
+  "description": "High-end audio recording studio",
+  "address": "Delhi",
+  "phone": "9999999999",
+  "email": "elite@studio.com",
+  "website": "https://elitestudio.com",
+  "instagram": "elitestudio",
+  "existingImageUrl": "https://existing-image-url.com/logo.png"
+}
+###
+GET http://localhost:4000/api/studio/studio-details
+Authorization:  Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc2ODUzMDAxNiwiZXhwIjoxNzY4NTMzNjE2fQ.kjdKyvAaOyCl-sA90WioQVsSSqeGCbDUoixqhGl90g0
+###
+GET http://localhost:4000/api/public/album/BABY PHOTOGRAPHY
+###
+GET http://localhost:4000/api/public/labels/BABY PHOTOGRAPHY
+###
+GET http://localhost:4000/api/public/album/29
+###
+GET http://localhost:4000/api/public/media/11
+###
+GET http://localhost:4000/api/public/media/album/29
+###
+GET http://localhost:4000/api/payments/details/11
+###
+GET http://localhost:4000/api/client-auth/user/5
+### 
+GET http://localhost:4000/api/payments/details/7
+Authorization:  Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc3MTI0MjE5MiwiZXhwIjoxNzcxMjQ1NzkyfQ.zeb_3fZGFaVyjandPB-_OyFbYHaPHR5so6DExZyDyYE
+
+###
+GET http://localhost:4000/api/Cart/cart
+###
+GET http://localhost:4000/api/public/gallery/1
