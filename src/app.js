@@ -16,6 +16,7 @@ const allowedOrigins = new Set([
   'http://127.0.0.1:5173',
   'http://192.168.29.49:3000',
   'http://192.168.29.49:5173',
+  'https://www.rafiyadigitalstudio.in/'
   'https://digital-studio-chi.vercel.app'
 ]);
 
