@@ -331,6 +331,7 @@ exports.createEvent = (req, res) => {
     end_time,
     location
   } = req.body;
+  const normalizedEmail = String(client_email || '').trim().toLowerCase();
 
   // Basic validation
   if (!client_name || !client_phone || !event_type || !event_date) {
@@ -339,14 +340,15 @@ exports.createEvent = (req, res) => {
     });
   }
 
-  // 1. Check if client already exists (by phone)
+  // 1. Check if client already exists (by phone or email)
   const findClientSql = `
     SELECT id FROM clients
     WHERE phone = ?
+       OR ( ? <> '' AND LOWER(email) = ? )
     LIMIT 1
   `;
 
-  db.get(findClientSql, [client_phone], (err, client) => {
+  db.get(findClientSql, [client_phone, normalizedEmail, normalizedEmail], (err, client) => {
     if (err) return res.status(500).json({ error: err.message });
 
     const createEventWithClient = (clientId) => {
@@ -401,9 +403,25 @@ exports.createEvent = (req, res) => {
 
     db.run(
       insertClientSql,
-      [client_name, client_phone, client_email || null],
+      [client_name, client_phone, normalizedEmail || null],
       function (err) {
-        if (err) return res.status(500).json({ error: err.message });
+        if (err) {
+          // If email already exists due to a race or previous record, attach event to that client.
+          if (normalizedEmail) {
+            return db.get(
+              `SELECT id FROM clients WHERE LOWER(email) = ? LIMIT 1`,
+              [normalizedEmail],
+              (findErr, existingClient) => {
+                if (findErr) return res.status(500).json({ error: findErr.message });
+                if (existingClient?.id) {
+                  return createEventWithClient(existingClient.id);
+                }
+                return res.status(500).json({ error: err.message });
+              }
+            );
+          }
+          return res.status(500).json({ error: err.message });
+        }
         createEventWithClient(this.lastID);
       }
     );

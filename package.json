@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "start": "nodemon src/server.js"
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
@@ -24,7 +26,7 @@
     "multer-s3": "^3.0.1",
     "mysql2": "^3.18.2",
     "nodemailer": "^6.10.1",
-    "nodemon": "^3.1.11",
+    "nodemon": "^3.1.14",
     "npm": "^11.11.0",
     "razorpay": "^2.9.6",
     "run": "^1.5.0",
@@ -34,5 +36,7 @@
     "start": "^5.1.0",
     "ua-parser-js": "^2.0.8",
     "uuid": "^13.0.0"
-  }
+  },
+  "main": "src/server.js",
+  "devDependencies": {}
 }

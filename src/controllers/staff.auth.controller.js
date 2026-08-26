@@ -4,8 +4,80 @@ const { hash, compare } = require('../utils/password');
 const s3Client = require('../config/s3');
 const { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { sendMail } = require('../utils/mail');
 
 const BUCKET = process.env.S3_BUCKET_NAME;
+
+exports.forgotPassword = (req, res) => {
+  const normalizedEmail = String(req.body?.email || '').trim().toLowerCase();
+  if (!normalizedEmail) return res.status(400).json({ message: 'Email is required' });
+
+  db.get(
+    `SELECT id, name, email, is_account_active FROM staff WHERE LOWER(TRIM(email)) = ? LIMIT 1`,
+    [normalizedEmail],
+    async (err, staff) => {
+      if (err) {
+        console.error('Staff forgot password DB error:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+      }
+      if (!staff) return res.status(404).json({ message: 'No staff account was found for this email.' });
+      if (!staff.is_account_active) return res.status(400).json({ message: 'This staff account is not active. Please use the original password setup email or contact an administrator.' });
+
+      let token;
+      try {
+        token = jwt.sign({ staffId: staff.id, email: staff.email, type: 'staff-password-reset' }, process.env.JWT_SECRET, { expiresIn: '1h' });
+      } catch (tokenError) {
+        console.error('Staff reset token error:', tokenError);
+        return res.status(500).json({ message: 'Could not create a reset link' });
+      }
+
+      const baseUrl = (process.env.FRONTEND_URL || process.env.CLIENT_BASE_URL || 'http://localhost:5173').replace(/\/$/, '');
+      const link = `${baseUrl}/staff/reset-password?token=${encodeURIComponent(token)}`;
+      try {
+        await sendMail({
+          to: staff.email,
+          subject: 'Reset your staff portal password',
+          text: `Hello ${staff.name || 'Staff'},\n\nReset your password using this link: ${link}\n\nThe link expires in one hour.`,
+          html: `<p>Hello ${staff.name || 'Staff'},</p><p>You requested a password reset for your staff portal account.</p><p><a href="${link}">Reset staff password</a></p><p>This link expires in one hour. If you did not request it, you can ignore this email.</p>`,
+        });
+        return res.json({ message: 'A staff password reset link has been sent to your email.' });
+      } catch (mailError) {
+        console.error('Staff reset email failed:', mailError);
+        return res.status(502).json({ message: 'Could not send the reset email. Please try again.' });
+      }
+    }
+  );
+};
+
+exports.resetPassword = async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ message: 'Token and password are required' });
+  if (String(password).length < 8) return res.status(400).json({ message: 'Password must contain at least 8 characters' });
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (_error) {
+    return res.status(400).json({ message: 'This reset link is invalid or has expired.' });
+  }
+  if (decoded.type !== 'staff-password-reset' || !decoded.staffId) return res.status(400).json({ message: 'This reset link is invalid or has expired.' });
+
+  try {
+    const passwordHash = await hash(password);
+    db.run(
+      `UPDATE staff SET password_hash = ?, is_account_active = 1, status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND LOWER(TRIM(email)) = ?`,
+      [passwordHash, decoded.staffId, String(decoded.email || '').trim().toLowerCase()],
+      function (err) {
+        if (err) return res.status(500).json({ message: 'Internal server error' });
+        if (!this.changes) return res.status(400).json({ message: 'This reset link is invalid or has expired.' });
+        return res.json({ message: 'Your staff password has been reset successfully.' });
+      }
+    );
+  } catch (error) {
+    console.error('Staff reset password error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
 async function recordGalleryActivity(req, payload) {
   try {

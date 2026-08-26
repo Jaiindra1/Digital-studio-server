@@ -5,6 +5,8 @@ const upload = require('../middleware/upload.middleware');
 
 // Public endpoint used from email link for staff password setup
 router.post('/create-password', controller.createPassword);
+router.post('/forgot-password', controller.forgotPassword);
+router.post('/reset-password', controller.resetPassword);
 router.post('/login', controller.login);
 router.get('/me/events', controller.getMyEvents);
 router.get('/me/events/:eventId/media', controller.getEventMedia);

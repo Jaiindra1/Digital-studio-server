@@ -2,11 +2,14 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/products.controller');
 const upload = require('../middlewares/uploadProductImage');
+const authenticate = require('../middleware/auth.middleware');
 
 ////////////////////////////////////////////////////
 // PUBLIC ROUTES
 ////////////////////////////////////////////////////
 router.get('/', productController.getAllProducts);
+router.get('/shop-frame-prices', productController.getFramePrices);
+router.put('/shop-frame-prices', authenticate, productController.updateFramePrices);
 router.get('/:id', productController.getProductById);
 
 ////////////////////////////////////////////////////

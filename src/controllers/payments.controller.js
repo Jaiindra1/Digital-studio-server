@@ -100,6 +100,33 @@ async function getEventPaymentSnapshot(eventId) {
   };
 }
 
+async function getClientOrderPaymentSnapshot(orderId) {
+  const order = await new Promise((resolve, reject) => {
+    db.get(
+      `SELECT o.id, o.client_id, o.total, o.status, o.payment_status,
+              c.name AS clientName, c.email AS clientEmail, c.phone AS clientPhone
+       FROM client_orders o
+       JOIN clients c ON c.id = o.client_id
+       WHERE o.id = ?`,
+      [orderId],
+      (err, row) => (err ? reject(err) : resolve(row))
+    );
+  });
+
+  if (!order) return null;
+
+  const totalAmount = Number(order.total || 0);
+  const isPaid = String(order.payment_status || '').toLowerCase() === 'paid';
+
+  return {
+    order,
+    summary: {
+      total_amount: totalAmount,
+      remaining_amount: isPaid ? 0 : totalAmount,
+    },
+  };
+}
+
 async function emitPaymentRecorded(req, { eventId, amount, method, reference, type, recordedBy = null }) {
   const event = await new Promise((resolve, reject) => {
     db.get(
@@ -338,6 +365,167 @@ exports.verifyRazorpayPayment = async (req, res) => {
   } catch (err) {
     console.error('Verify Razorpay payment error:', err);
     return res.status(500).json({ error: 'Failed to verify payment' });
+  }
+};
+
+exports.createClientOrderRazorpayOrder = async (req, res) => {
+  const { orderId, clientId } = req.body || {};
+  const { client: razorpay, error: razorpayConfigError } = getRazorpayClient();
+
+  if (!razorpay) {
+    return res.status(500).json({ error: razorpayConfigError || 'Razorpay is not configured on the server' });
+  }
+
+  if (!orderId || !clientId) {
+    return res.status(400).json({ error: 'orderId and clientId are required' });
+  }
+
+  try {
+    const snapshot = await getClientOrderPaymentSnapshot(orderId);
+    if (!snapshot) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (Number(snapshot.order.client_id) !== Number(clientId)) {
+      return res.status(403).json({ error: 'This order does not belong to the client' });
+    }
+
+    if (String(snapshot.order.payment_status || '').toLowerCase() === 'paid') {
+      return res.status(400).json({ error: 'This order is already paid' });
+    }
+
+    const paymentAmount = Number(snapshot.summary.remaining_amount || 0);
+    if (paymentAmount <= 0) {
+      return res.status(400).json({ error: 'No pending amount for this order' });
+    }
+
+    const order = await razorpay.orders.create({
+      amount: Math.round(paymentAmount * 100),
+      currency: 'INR',
+      receipt: `client_order_${orderId}_${Date.now()}`,
+      notes: {
+        orderId: String(orderId),
+        clientId: String(clientId),
+        paymentFor: 'client_order',
+      },
+    });
+
+    return res.json({
+      order,
+      key: process.env.RAZORPAY_KEY_ID,
+      amount: paymentAmount,
+      client: {
+        name: snapshot.order.clientName || 'Client',
+        email: snapshot.order.clientEmail || '',
+        contact: snapshot.order.clientPhone || '',
+      },
+      clientOrder: {
+        id: snapshot.order.id,
+        status: snapshot.order.status || 'placed',
+        payment_status: snapshot.order.payment_status || 'unpaid',
+      },
+    });
+  } catch (err) {
+    console.error('Create client order Razorpay order error:', err);
+    return res.status(500).json({
+      error: 'Failed to create client order payment',
+      details: err?.error?.description || err?.message || 'Unknown Razorpay error',
+    });
+  }
+};
+
+exports.verifyClientOrderRazorpayPayment = async (req, res) => {
+  const {
+    orderId,
+    clientId,
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+  } = req.body || {};
+
+  const { error: razorpayConfigError } = getRazorpayClient();
+
+  if (!process.env.RAZORPAY_KEY_SECRET) {
+    return res.status(500).json({ error: razorpayConfigError || 'Razorpay is not configured on the server' });
+  }
+
+  if (!orderId || !clientId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ error: 'Missing Razorpay payment verification fields' });
+  }
+
+  try {
+    const snapshot = await getClientOrderPaymentSnapshot(orderId);
+    if (!snapshot) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (Number(snapshot.order.client_id) !== Number(clientId)) {
+      return res.status(403).json({ error: 'This order does not belong to the client' });
+    }
+
+    if (String(snapshot.order.payment_status || '').toLowerCase() === 'paid') {
+      return res.json({ message: 'Order already marked as paid', duplicate: true });
+    }
+
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ error: 'Invalid Razorpay signature' });
+    }
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `UPDATE client_orders
+         SET payment_status = 'paid',
+             status = CASE WHEN status = 'placed' THEN 'processing' ELSE status END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND client_id = ?`,
+        [orderId, clientId],
+        function (err) {
+          if (err) return reject(err);
+          if (!this.changes) return reject(new Error('ORDER_NOT_UPDATED'));
+          return resolve();
+        }
+      );
+    });
+
+    const payload = {
+      invoiceId: `ORD-${orderId}`,
+      amount: Number(snapshot.order.total || 0),
+      clientId: Number(clientId),
+      clientName: snapshot.order.clientName || 'Client',
+      method: 'Razorpay',
+      reference: razorpay_payment_id,
+      paymentType: 'Order',
+      orderId: Number(orderId),
+      timestamp: new Date().toISOString(),
+    };
+
+    await new Promise((resolve, reject) => {
+      db.run(
+        `INSERT INTO notifications (type, payload, user_id) VALUES (?, ?, ?)`,
+        ['PAYMENT_RECEIVED', JSON.stringify(payload), null],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to('admins').emit('paymentReceived', payload);
+    }
+
+    return res.json({
+      message: 'Order payment verified successfully',
+      paymentId: razorpay_payment_id,
+      orderId: Number(orderId),
+      payment_status: 'paid',
+    });
+  } catch (err) {
+    console.error('Verify client order Razorpay payment error:', err);
+    return res.status(500).json({ error: 'Failed to verify order payment' });
   }
 };
 

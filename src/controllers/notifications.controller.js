@@ -20,12 +20,16 @@ exports.list = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit || '50', 10);
     const todayOnly = String(req.query.today || '0') === '1';
+    const includeRead = String(req.query.include_read || '0') === '1';
+    const conditions = [];
+    if (!includeRead) conditions.push('is_read = 0');
+    if (todayOnly) conditions.push("DATE(created_at) = DATE('now')");
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const rows = await new Promise((resolve, reject) => {
       db.all(
         `SELECT * FROM notifications
-         WHERE is_read = 0
-           ${todayOnly ? `AND DATE(created_at) = DATE('now')` : ''}
+         ${whereClause}
          ORDER BY created_at DESC
          LIMIT ?`,
         [limit],

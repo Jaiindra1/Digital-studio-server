@@ -6,6 +6,63 @@ const s3Client = require('../config/s3');
 
 const BUCKET = process.env.S3_BUCKET_NAME;
 
+const DEFAULT_FRAME_PRICES = {
+  'walnut-classic': 1299,
+  'ivory-gallery-mount': 1899,
+  'midnight-black-portrait': 1499,
+  'oak-floating-canvas': 2499,
+  'champagne-gold-keepsake': 1699,
+  'minimal-white-square': 1099,
+  'rosewood-heritage': 2199,
+  'double-photo-table': 899,
+};
+
+async function ensureFramePrices() {
+  await db.query(`CREATE TABLE IF NOT EXISTS shop_frame_prices (
+    frame_key VARCHAR(80) PRIMARY KEY,
+    price DECIMAL(10,2) NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+  await Promise.all(Object.entries(DEFAULT_FRAME_PRICES).map(([key, price]) =>
+    db.query('INSERT IGNORE INTO shop_frame_prices (frame_key, price) VALUES (?, ?)', [key, price])
+  ));
+}
+
+exports.getFramePrices = async (_req, res) => {
+  try {
+    await ensureFramePrices();
+    const result = await db.query('SELECT frame_key, price FROM shop_frame_prices ORDER BY frame_key');
+    const prices = Object.fromEntries((result.rows || []).map((row) => [row.frame_key, Number(row.price)]));
+    return res.json(prices);
+  } catch (error) {
+    console.error('Frame price load failed:', error.message);
+    return res.status(500).json({ message: 'Failed to load frame prices' });
+  }
+};
+
+exports.updateFramePrices = async (req, res) => {
+  const prices = req.body?.prices;
+  if (!prices || typeof prices !== 'object' || Array.isArray(prices)) {
+    return res.status(400).json({ message: 'A prices object is required' });
+  }
+
+  const updates = Object.entries(prices);
+  if (!updates.length || updates.some(([key, price]) => !(key in DEFAULT_FRAME_PRICES) || !Number.isFinite(Number(price)) || Number(price) < 0 || Number(price) > 10000000)) {
+    return res.status(400).json({ message: 'One or more frame prices are invalid' });
+  }
+
+  try {
+    await ensureFramePrices();
+    await Promise.all(updates.map(([key, price]) =>
+      db.query('UPDATE shop_frame_prices SET price=? WHERE frame_key=?', [Number(price), key])
+    ));
+    return res.json({ message: 'Shop frame prices updated successfully' });
+  } catch (error) {
+    console.error('Frame price update failed:', error.message);
+    return res.status(500).json({ message: 'Failed to update frame prices' });
+  }
+};
+
 ////////////////////////////////////////////////////
 // Helpers: normalize/parse specs payload safely
 ////////////////////////////////////////////////////
