@@ -1,0 +1,11 @@
+const router = require('express').Router();
+const controller = require('../controllers/customDesign.controller');
+const authenticate = require('../middleware/auth.middleware');
+const authenticateStaff = require('../middleware/staff.auth.middleware');
+const upload = require('../middlewares/uploadProductImage');
+const rateLimit = require('../middleware/rateLimit');
+router.post('/', rateLimit({ max: 8, windowMs: 60 * 60 * 1000 }), upload.single('reference_image'), controller.create);
+router.get('/staff', authenticateStaff, controller.listForStaff);
+router.patch('/:id/status', authenticateStaff, controller.updateStatusForStaff);
+router.get('/', authenticate, controller.listAdmin);
+module.exports = router;

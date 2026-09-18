@@ -4,7 +4,7 @@ const nodemailer = require('nodemailer');
 const emailTemplates = require('./emailTemplates.controller');
 const { getNotificationSettings } = require('./notifications.controller');
 const s3Client = require('../config/s3');
-const { GetObjectCommand } = require('@aws-sdk/client-s3');
+const { GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 
 const BUCKET = process.env.S3_BUCKET_NAME;
@@ -124,6 +124,11 @@ exports.getAllEvents = (req, res) => {
     e.guest_count,
     e.enquiry_message,
     e.amount_status,
+    COALESCE(e.delivery_method, 'ONLINE') AS delivery_method,
+    e.delivery_note,
+    e.delivered_at,
+    e.client_downloaded_at,
+    e.gallery_removed_at,
     e.advance_amount AS advance,
     COALESCE(pay.paid_from_payments, 0) AS paid_from_payments,
     COALESCE(pay.advance_from_payments, 0) AS advance_from_payments,
@@ -212,6 +217,11 @@ exports.getAllEvents = (req, res) => {
             paid_amount: row.paid_amount,
             remaining_amount: row.remaining_amount,
             amount_status: row.amount_status,
+            delivery_method: row.delivery_method,
+            delivery_note: row.delivery_note,
+            delivered_at: row.delivered_at,
+            client_downloaded_at: row.client_downloaded_at,
+            gallery_removed_at: row.gallery_removed_at,
             cancellationReason: row.cancellation_reason || null,
 
             client: {
@@ -238,6 +248,43 @@ exports.getAllEvents = (req, res) => {
       res.json(Object.values(eventsMap));
 
   });
+};
+
+// Admin delivery control. ONLINE unlocks the client gallery; OFFLINE records a physical delivery.
+exports.updateDelivery = (req, res) => {
+  const { eventId } = req.params;
+  const method = String(req.body?.delivery_method || '').toUpperCase();
+  const note = String(req.body?.delivery_note || '').trim() || null;
+  if (!['ONLINE', 'OFFLINE'].includes(method)) return res.status(400).json({ message: 'delivery_method must be ONLINE or OFFLINE' });
+
+  db.run(
+    `UPDATE events SET status = 'DELIVERED', delivery_method = ?, delivery_note = ?, delivered_at = COALESCE(delivered_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [method, note, eventId],
+    function (err) {
+      if (err) return res.status(500).json({ message: err.message });
+      if (!this.changes) return res.status(404).json({ message: 'Event not found' });
+      return res.json({ message: `Marked as ${method.toLowerCase()} delivered`, delivery_method: method, delivery_note: note });
+    }
+  );
+};
+
+// Permanently removes delivered files from S3 and event_assets. Online galleries require a download first.
+exports.deleteDeliveredMedia = async (req, res) => {
+  const { eventId } = req.params;
+  try {
+    const event = await new Promise((resolve, reject) => db.get(`SELECT id, delivery_method, client_downloaded_at FROM events WHERE id = ?`, [eventId], (err, row) => err ? reject(err) : resolve(row)));
+    if (!event) return res.status(404).json({ message: 'Event not found' });
+    if ((event.delivery_method || 'ONLINE') === 'ONLINE' && !event.client_downloaded_at) return res.status(409).json({ message: 'Wait until the client downloads the online gallery before removing it.' });
+
+    const assets = await new Promise((resolve, reject) => db.all(`SELECT id, s3_key FROM event_assets WHERE event_id = ?`, [eventId], (err, rows) => err ? reject(err) : resolve(rows || [])));
+    await Promise.all(assets.filter((asset) => asset.s3_key && BUCKET).map((asset) => s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: asset.s3_key }))));
+    await new Promise((resolve, reject) => db.run(`DELETE FROM event_assets WHERE event_id = ?`, [eventId], (err) => err ? reject(err) : resolve()));
+    await new Promise((resolve, reject) => db.run(`UPDATE events SET gallery_removed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [eventId], (err) => err ? reject(err) : resolve()));
+    return res.json({ message: 'Delivered media permanently deleted', deleted_count: assets.length });
+  } catch (err) {
+    console.error('Failed to delete delivered media:', err);
+    return res.status(500).json({ message: 'Failed to delete delivered media' });
+  }
 };
 
 // Admin: fetch all event assets with signed URLs

@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/client.auth.controller');
+const rateLimit = require('../middleware/rateLimit');
+const { ensureDeliverySchema } = require('../utils/deliverySchema');
 
-router.post('/login', controller.clientLogin);
+router.use((req, res, next) => ensureDeliverySchema().then(() => next()).catch(next));
+
+router.post('/login', rateLimit({ max: 10, windowMs: 15 * 60 * 1000 }), controller.clientLogin);
 router.post('/create-password', controller.createPassword);
 router.post('/forgot-password', controller.forgotPassword);
 router.post('/reset-password', controller.resetPassword);

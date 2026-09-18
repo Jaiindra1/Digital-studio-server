@@ -140,7 +140,7 @@ async function attachSignedUrl(product) {
 exports.getAllProducts = async (req, res) => {
   const { category, orientation } = req.query;
 
-  let query = 'SELECT * FROM products WHERE 1=1';
+  let query = "SELECT * FROM products WHERE status='active'";
   const params = [];
 
   if (category) {

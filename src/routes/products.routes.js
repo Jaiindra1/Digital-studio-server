@@ -17,15 +17,15 @@ router.get('/:id', productController.getProductById);
 ////////////////////////////////////////////////////
 
 // Create product (with image upload)
-router.post('/', upload.single('image'), productController.createProduct);
+router.post('/', authenticate, upload.single('image'), productController.createProduct);
 
 // Update product (image optional replace)
-router.put('/:id', upload.single('image'), productController.updateProduct);
+router.put('/:id', authenticate, upload.single('image'), productController.updateProduct);
 
 // Soft delete
-router.delete('/:id', productController.deleteProduct);
+router.delete('/:id', authenticate, productController.deleteProduct);
 
 // Restore
-router.patch('/:id/restore', productController.restoreProduct);
+router.patch('/:id/restore', authenticate, productController.restoreProduct);
 
 module.exports = router;

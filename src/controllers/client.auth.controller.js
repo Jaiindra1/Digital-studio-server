@@ -330,6 +330,10 @@ exports.getById = (req, res) => {
       e.location, 
       e.venue, 
       e.status, 
+      COALESCE(e.delivery_method, 'ONLINE') AS delivery_method,
+      e.delivery_note,
+      e.delivered_at,
+      e.gallery_removed_at,
       e.event_type, 
       e.event_date,
       s.id AS staff_id,
@@ -363,6 +367,10 @@ exports.getById = (req, res) => {
           location: row.location,
           venue: row.venue,
           status: row.status,
+          delivery_method: row.delivery_method,
+          delivery_note: row.delivery_note,
+          delivered_at: row.delivered_at,
+          gallery_removed_at: row.gallery_removed_at,
           event_type: row.event_type,
           event_date: row.event_date,
           staff: []
@@ -853,7 +861,7 @@ exports.checkoutClientCart = async (req, res) => {
     const orderId = await new Promise((resolve, reject) => {
       db.run(
         `INSERT INTO client_orders (client_id, cart_id, total, status, payment_status)
-         VALUES (?, ?, ?, 'placed', 'unpaid')`,
+         VALUES (?, ?, ?, 'new', 'unpaid')`,
         [clientId, cart.id, total],
         function (err) {
           if (err) return reject(err);
@@ -1147,6 +1155,11 @@ exports.downloadEventMediaZip = async (req, res) => {
     if (!assets.length) {
       return res.status(404).json({ message: 'No media available for this event' });
     }
+
+    await new Promise((resolve, reject) => db.run(
+      `UPDATE events SET client_downloaded_at = COALESCE(client_downloaded_at, CURRENT_TIMESTAMP) WHERE id = ?`,
+      [eventId], (err) => err ? reject(err) : resolve()
+    ));
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename=event-${eventId}-media.zip`);

@@ -42,6 +42,10 @@ app.use(cors({
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', service: 'studio-backend', timestamp: new Date().toISOString() });
+});
+
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/client-auth', require('./routes/client.auth.routes'));
 app.use('/api/staff-auth', require('./routes/staff.auth.routes'));
@@ -63,7 +67,9 @@ app.use('/api/email-templates', require('./routes/emailTemplates.routes'));
 app.use('/api/careers', require('./routes/careers.routes'));
 app.use('/api/public/careers', require('./routes/public.careers.routes'));
 app.use('/api/products', require('./routes/products.routes'));
+app.use('/api/service-options', require('./routes/serviceOptions.routes'));
 app.use('/api/contact', require('./routes/contact.routes'));
+app.use('/api/custom-design-requests', require('./routes/customDesign.routes'));
 
 // Add booking route
 app.use('/api/booking', bookingRoutes);

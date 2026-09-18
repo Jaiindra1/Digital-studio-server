@@ -147,7 +147,7 @@ exports.updateOrderForClient = async (req, res) => {
   const orderId = Number(req.params.orderId);
   const { status, payment_status, total } = req.body || {};
 
-  const allowedStatus = ['placed', 'processing', 'completed', 'cancelled'];
+  const allowedStatus = ['new', 'design_review', 'in_production', 'ready', 'delivered', 'cancelled', 'placed', 'processing', 'completed'];
   const allowedPayment = ['unpaid', 'partial', 'paid'];
 
   if (!clientId || Number.isNaN(clientId) || !orderId || Number.isNaN(orderId)) {
@@ -212,6 +212,15 @@ exports.updateOrderForClient = async (req, res) => {
       });
     });
 
+    if (status) {
+      await new Promise((resolve, reject) => {
+        db.run(`CREATE TABLE IF NOT EXISTS client_order_status_history (id INT PRIMARY KEY AUTO_INCREMENT, order_id INT NOT NULL, status VARCHAR(32) NOT NULL, note TEXT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)`, [], (tableErr) => {
+          if (tableErr) return reject(tableErr);
+          db.run('INSERT INTO client_order_status_history (order_id, status) VALUES (?, ?)', [orderId, status], (historyErr) => historyErr ? reject(historyErr) : resolve());
+        });
+      });
+    }
+
     const orderRow = await new Promise((resolve, reject) => {
       db.get(
         `SELECT id, total, status, payment_status, created_at, updated_at FROM client_orders WHERE id = ?`,
@@ -243,4 +252,3 @@ exports.updateOrderForClient = async (req, res) => {
     res.status(500).json({ error: 'Failed to update order' });
   }
 };
-

@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 const controller = require('../controllers/staff.auth.controller');
 const upload = require('../middleware/upload.middleware');
+const { ensureDeliverySchema } = require('../utils/deliverySchema');
+
+router.use((req, res, next) => ensureDeliverySchema().then(() => next()).catch(next));
 
 // Public endpoint used from email link for staff password setup
 router.post('/create-password', controller.createPassword);

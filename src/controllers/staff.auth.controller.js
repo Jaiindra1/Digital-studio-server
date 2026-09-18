@@ -358,6 +358,10 @@ exports.getMyEvents = (req, res) => {
       e.end_time,
       e.location,
       e.status,
+      COALESCE(e.delivery_method, 'ONLINE') AS delivery_method,
+      e.delivery_note,
+      e.delivered_at,
+      e.gallery_removed_at,
       e.Stage,
       e.venue,
       c.name AS client_name

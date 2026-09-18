@@ -1,5 +1,5 @@
 require('dotenv').config();
-const db = require('../src/db/db');
+const db = require('../src/config/db');
 const { hash } = require('../src/utils/password');
 
 const email = process.argv[2];
@@ -19,7 +19,7 @@ if (!email || !password) {
       [email, hashedPassword],
       function (err) {
         if (err) {
-          if (err.message.includes('UNIQUE')) {
+          if (err.code === 'ER_DUP_ENTRY' || err.message.includes('UNIQUE')) {
             console.error('❌ Admin already exists');
           } else {
             console.error('❌ DB Error:', err.message);

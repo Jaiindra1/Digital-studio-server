@@ -83,7 +83,11 @@ async function getEventPaymentSnapshot(eventId) {
     .filter((p) => String(p.payment_type || '').toUpperCase().replace(/\s+/g, '_') === 'ADVANCE')
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
   const advanceDue = Math.max(advance - advancePaid, 0);
-  const paid = paidFromPayments;
+  // Older bookings may store the advance on the event as well as in a payment
+  // row. Count the advance once, while still supporting bookings that only
+  // have the event-level advance value.
+  const nonAdvancePaid = paidFromPayments - advancePaid;
+  const paid = Math.max(advance, advancePaid) + nonAdvancePaid;
   const remaining = Math.max(total - paid, 0);
 
   return {
@@ -915,37 +919,21 @@ exports.getPayments = async (req, res) => {
   const { eventId } = req.params;
 
   try {
-      // Fetch all payments for the event
-      const payments = await new Promise((resolve, reject) => {
-        db.all(
-          'SELECT id, amount, method, payment_type as status, created_at as date FROM payments WHERE event_id = ? ORDER BY created_at ASC',
-          [eventId],
-          (err, rows) => (err ? reject(err) : resolve(rows))
-        );
-      });
+    const snapshot = await getEventPaymentSnapshot(eventId);
+    if (!snapshot) return res.status(404).json({ error: 'Event not found' });
 
-      // Fetch event total amount and advance from events table
-      const event = await new Promise((resolve, reject) => {
-        db.get('SELECT amount, advance_amount FROM events WHERE id = ?', [eventId], (err, row) => (err ? reject(err) : resolve(row)));
-      });
-
-      const total = event ? parseFloat(event.amount) : 0;
-      const advance = event && event.advance_amount ? parseFloat(event.advance_amount) : 0;
-      // Sum of all payments made (excluding advance field)
-      const paidPayments = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-      // Total paid = advance (from event) + sum of payments
-      const paid = advance + paidPayments;
-      res.json({
-        payments,
-        summary: {
-          total_amount: total,
-          advance_amount: advance,
-          paid_amount: paid,
-          remaining_amount: total - paid
-        }
-      });
-    } catch (err) {
-      console.error('Error fetching payments:', err);
-      res.status(500).json({ error: 'Failed to fetch payment details' });
-    }
+    res.json({
+      payments: snapshot.payments.map((payment) => ({
+        id: payment.id,
+        amount: payment.amount,
+        method: payment.method,
+        status: payment.payment_type,
+        date: payment.created_at,
+      })),
+      summary: snapshot.summary,
+    });
+  } catch (err) {
+    console.error('Error fetching payments:', err);
+    res.status(500).json({ error: 'Failed to fetch payment details' });
+  }
 };
