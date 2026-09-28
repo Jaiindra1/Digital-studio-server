@@ -5,6 +5,7 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const s3Client = require('../config/s3');
 
 const BUCKET = process.env.S3_BUCKET_NAME;
+const ORDERABLE_SERVICES = new Set(['Mug Print', 'Cap Print', 'T-Shirt Print', 'Key Chain', 'Pouch Print', 'Stone Print', 'Title Print', 'Spiral Binding', 'Lamination Photo Frame', 'Passport Photos', 'Maxi Photos', 'Matching Photos', 'Birthday Photos', 'Calendars'].map((name) => name.toLowerCase()));
 
 async function ensureTable() {
   await db.query(`CREATE TABLE IF NOT EXISTS service_options (
@@ -59,6 +60,7 @@ exports.listAdmin = async (_req, res) => {
 exports.create = async (req, res) => {
   const payload = req.body;
   if (!valid(payload)) return res.status(400).json({ message: 'Service, title, and a valid price are required' });
+  if (!ORDERABLE_SERVICES.has(String(payload.service_name).trim().toLowerCase())) return res.status(400).json({ message: 'This service is request-only and cannot have online options or prices.' });
   try {
     await ensureTable();
     const imageKey = req.file ? await uploadProductImage(req.file) : null;
@@ -71,6 +73,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   const payload = req.body;
   if (!valid(payload)) return res.status(400).json({ message: 'Service, title, and a valid price are required' });
+  if (!ORDERABLE_SERVICES.has(String(payload.service_name).trim().toLowerCase())) return res.status(400).json({ message: 'This service is request-only and cannot have online options or prices.' });
   try {
     await ensureTable();
     const imageKey = req.file ? await uploadProductImage(req.file) : null;
