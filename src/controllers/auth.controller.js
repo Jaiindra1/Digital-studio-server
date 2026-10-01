@@ -43,6 +43,11 @@ exports.login = async (req, res) => {
 
       /* ================= SESSION INSERT ================= */
 
+      // Session history is useful metadata, but it must never prevent a valid
+      // administrator from signing in when that table is unavailable or an
+      // older production schema is still being migrated.
+      try {
+
       const deviceName = req.headers['x-device-name'] || 'Unknown Device';
       const userAgent = req.headers['user-agent'];
       const ipAddress =
@@ -125,6 +130,10 @@ exports.login = async (req, res) => {
             }
           );
         });
+      }
+
+      } catch (sessionErr) {
+        console.error('Admin session tracking error:', sessionErr);
       }
 
       /* ================= JWT ================= */

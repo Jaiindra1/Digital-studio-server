@@ -9,6 +9,7 @@ const bookingRoutes = require("./routes/booking.routes");
 
 const allowedOrigins = new Set([
   'http://192.168.29.49:3000',
+  'https://rafiyadigitalstudio.in',
   'http://192.168.29.49:5173',
   'https://www.rafiyadigitalstudio.in',
   'https://digital-studio-chi.vercel.app'

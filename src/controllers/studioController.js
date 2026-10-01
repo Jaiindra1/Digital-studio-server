@@ -90,14 +90,20 @@ exports.getStudioProfileById = async (req, res) => {
 
     // Generate signed URL if image exists
     if (studio.image_url) {
-      const command = new GetObjectCommand({
-        Bucket: BUCKET,
-        Key: studio.image_url
-      });
+      try {
+        if (!BUCKET) throw new Error("S3_BUCKET_NAME is not configured");
+        const command = new GetObjectCommand({
+          Bucket: BUCKET,
+          Key: studio.image_url
+        });
 
-      studio.image_url = await getSignedUrl(s3Client, command, {
-        expiresIn: 3600 // 1 hour
-      });
+        studio.image_url = await getSignedUrl(s3Client, command, {
+          expiresIn: 3600 // 1 hour
+        });
+      } catch (signingError) {
+        console.error("Studio logo signing error:", signingError);
+        studio.image_url = null;
+      }
     }
 
     const normalizedStudio = {
