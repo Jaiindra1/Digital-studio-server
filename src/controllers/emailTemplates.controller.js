@@ -12,6 +12,9 @@ const transporter = nodemailer.createTransport({
         pass: process.env.EMAIL_PASS,
       }
     : undefined,
+  connectionTimeout: 8000,
+  greetingTimeout: 8000,
+  socketTimeout: 10000,
 });
 
 let reminderSchemaEnsured = false;

@@ -359,7 +359,7 @@ function readSettingsFromRows(rows) {
 // Helper that other controllers can use to read notification settings
 async function getNotificationSettings() {
   const rows = await new Promise((resolve, reject) => {
-    db.all(`SELECT key, value FROM notification_settings`, [], (err, result) =>
+    db.all(`SELECT \`key\`, value FROM notification_settings`, [], (err, result) =>
       err ? reject(err) : resolve(result)
     );
   });
@@ -372,7 +372,7 @@ exports.getNotificationSettings = getNotificationSettings;
 exports.getSettings = async (req, res) => {
   try {
     const rows = await new Promise((resolve, reject) => {
-      db.all(`SELECT key, value FROM notification_settings`, [], (err, result) =>
+      db.all(`SELECT \`key\`, value FROM notification_settings`, [], (err, result) =>
         err ? reject(err) : resolve(result)
       );
     });
@@ -402,9 +402,9 @@ exports.updateSettings = async (req, res) => {
 
     await new Promise((resolve, reject) => {
       const stmt = db.prepare(
-        `INSERT INTO notification_settings (key, value)
+        `INSERT INTO notification_settings (\`key\`, value)
          VALUES (?, ?)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+         ON DUPLICATE KEY UPDATE value = VALUES(value)`
       );
 
       db.serialize(() => {
