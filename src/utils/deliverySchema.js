@@ -33,6 +33,20 @@ async function ensureDeliverySchema() {
         }
       }
     }
+
+    const clientResult = await db.query(
+      `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'clients'`
+    );
+    const clientColumns = new Set(
+      (clientResult.rows || []).map((row) => String(row.COLUMN_NAME).toLowerCase())
+    );
+    if (!clientColumns.has('name')) {
+      await db.query('ALTER TABLE clients ADD COLUMN name VARCHAR(255) NULL');
+      if (clientColumns.has('full_name')) {
+        await db.query("UPDATE clients SET name = NULLIF(TRIM(full_name), '') WHERE name IS NULL");
+      }
+    }
   })().catch((error) => {
     deliverySchemaPromise = undefined;
     throw error;

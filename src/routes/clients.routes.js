@@ -1,10 +1,12 @@
 const express = require('express');
 const authenticate = require('../middleware/auth.middleware');
 const controller = require('../controllers/clients.controller');
+const { ensureDeliverySchema } = require('../utils/deliverySchema');
 
 const router = express.Router();
 
 router.use(authenticate);
+router.use((req, res, next) => ensureDeliverySchema().then(() => next()).catch(next));
 
 router.get('/', controller.getAll);
 router.post('/', controller.create);
