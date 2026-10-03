@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const paymentsController = require('../controllers/payments.controller');
+const { ensureDeliverySchema } = require('../utils/deliverySchema');
+
+router.use((req, res, next) => ensureDeliverySchema().then(() => next()).catch(next));
 
 // Endpoint for payment providers or internal callers to notify the app
 router.post('/notify', paymentsController.notify);

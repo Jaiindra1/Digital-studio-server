@@ -14,6 +14,7 @@ async function ensureDeliverySchema() {
     );
     const existing = new Set((result.rows || []).map((row) => String(row.COLUMN_NAME).toLowerCase()));
     const required = {
+      advance_amount: 'DECIMAL(10,2) NOT NULL DEFAULT 0',
       delivery_method: "VARCHAR(16) NOT NULL DEFAULT 'ONLINE'",
       delivery_note: 'TEXT NULL',
       delivered_at: 'DATETIME NULL',
@@ -24,6 +25,12 @@ async function ensureDeliverySchema() {
     for (const [column, definition] of Object.entries(required)) {
       if (!existing.has(column)) {
         await db.query(`ALTER TABLE events ADD COLUMN ${column} ${definition}`);
+
+        // Older database exports stored this value in `advance`. Copy it only
+        // when the replacement column is introduced so future edits remain safe.
+        if (column === 'advance_amount' && existing.has('advance')) {
+          await db.query('UPDATE events SET advance_amount = COALESCE(`advance`, 0)');
+        }
       }
     }
   })().catch((error) => {

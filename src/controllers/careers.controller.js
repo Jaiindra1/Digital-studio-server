@@ -13,6 +13,50 @@ const transporter = nodemailer.createTransport({
     : undefined,
 });
 
+let careerSchemaPromise;
+
+const ensureCareerSchema = () => {
+  if (careerSchemaPromise) return careerSchemaPromise;
+
+  careerSchemaPromise = (async () => {
+    await db.query(`CREATE TABLE IF NOT EXISTS career_openings (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      title VARCHAR(255) NOT NULL,
+      tags VARCHAR(255) NULL,
+      location VARCHAR(255) NULL,
+      description TEXT NULL,
+      requirements TEXT NULL,
+      status ENUM('OPEN','CLOSED') DEFAULT 'OPEN',
+      created_by INT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      INDEX idx_career_openings_status_created (status, created_at),
+      INDEX idx_career_openings_created_by (created_by)
+    )`);
+
+    await db.query(`CREATE TABLE IF NOT EXISTS career_applications (
+      id INT PRIMARY KEY AUTO_INCREMENT,
+      opening_id INT NOT NULL,
+      full_name VARCHAR(160) NOT NULL,
+      email VARCHAR(255) NULL,
+      phone VARCHAR(40) NOT NULL,
+      message TEXT NULL,
+      resume_file_name TEXT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_career_applications_opening (opening_id),
+      INDEX idx_career_applications_created (created_at),
+      CONSTRAINT fk_career_app_opening
+        FOREIGN KEY (opening_id) REFERENCES career_openings(id)
+        ON DELETE CASCADE
+    )`);
+  })().catch((error) => {
+    careerSchemaPromise = undefined;
+    throw error;
+  });
+
+  return careerSchemaPromise;
+};
+
 const dbRun = (sql, params = []) =>
   new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
@@ -77,6 +121,7 @@ const sendMailWithFallback = async (mailOptions) => {
 
 exports.getPublicOpenings = async (_req, res) => {
   try {
+    await ensureCareerSchema();
     const rows = await dbAll(
       `SELECT id, title, tags, location, description, requirements, status, created_at
        FROM career_openings
@@ -104,6 +149,7 @@ exports.getPublicOpenings = async (_req, res) => {
 
 exports.getAdminOpenings = async (_req, res) => {
   try {
+    await ensureCareerSchema();
     const rows = await dbAll(
       `SELECT id, title, tags, location, description, requirements, status, created_by, created_at, updated_at
        FROM career_openings
@@ -132,6 +178,7 @@ exports.getAdminOpenings = async (_req, res) => {
 
 exports.createOpening = async (req, res) => {
   try {
+    await ensureCareerSchema();
     const { title, tags, location, description, requirements, status } = req.body || {};
     if (!title || !String(title).trim()) {
       return res.status(400).json({ error: 'title is required' });
@@ -173,6 +220,7 @@ exports.createOpening = async (req, res) => {
 
 exports.updateOpening = async (req, res) => {
   try {
+    await ensureCareerSchema();
     const { id } = req.params;
     const { title, tags, location, description, requirements, status } = req.body || {};
 
@@ -232,6 +280,7 @@ exports.updateOpening = async (req, res) => {
 
 exports.deleteOpening = async (req, res) => {
   try {
+    await ensureCareerSchema();
     const { id } = req.params;
     await dbRun(`DELETE FROM career_openings WHERE id = ?`, [id]);
     res.json({ success: true });
@@ -243,6 +292,7 @@ exports.deleteOpening = async (req, res) => {
 
 exports.applyToOpening = async (req, res) => {
   try {
+    await ensureCareerSchema();
     const { id } = req.params;
     const { full_name, email, phone, message } = req.body || {};
 
